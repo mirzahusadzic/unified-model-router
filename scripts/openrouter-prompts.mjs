@@ -7,8 +7,17 @@ import { dirname, join } from 'node:path';
 // `router_instructions_suffix`; the generated Codex catalog omits that field.
 export const suffixField = 'router_instructions_suffix';
 
+const routerPrefixes = ['anthropic/', 'deepseek/', 'openrouter/', 'ultra-spark/', 'ultra-spark-private/'];
+
 export function usesOpenRouterPrompts(slug) {
-  return ['anthropic/', 'deepseek/', 'openrouter/', 'ultra-spark/', 'ultra-spark-private/'].some(prefix => slug.startsWith(prefix));
+  return routerPrefixes.some(prefix => slug.startsWith(prefix));
+}
+
+// A router slug names a model after its prefix: no empty name, no space, no
+// leading slash.
+export function namesRouterModel(slug) {
+  const prefix = routerPrefixes.find(value => slug.startsWith(value));
+  return Boolean(prefix) && /^[^\s/]\S*$/.test(slug.slice(prefix.length));
 }
 
 export function readPrompts(instructionsFile, persistentFile) {

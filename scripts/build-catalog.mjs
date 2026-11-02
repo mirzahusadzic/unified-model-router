@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { applyOpenRouterPrompts, readPrompts, suffixField, usesOpenRouterPrompts } from './openrouter-prompts.mjs';
+import { applyOpenRouterPrompts, namesRouterModel, readPrompts, suffixField, usesOpenRouterPrompts } from './openrouter-prompts.mjs';
 
 function parseArguments(values) {
   const options = {};
@@ -65,6 +65,7 @@ for (const entry of entries) {
   if (!usesOpenRouterPrompts(model.slug)) {
     throw new Error(`${__source}: ${model.slug} must start with anthropic/, deepseek/, openrouter/, ultra-spark/, or ultra-spark-private/`);
   }
+  if (!namesRouterModel(model.slug)) throw new Error(`${__source}: ${model.slug} needs a model name after its prefix`);
   if (catalogSlugs.has(model.slug)) throw new Error(`${__source}: duplicate catalog slug ${model.slug}`);
   if (bySlug.has(model.slug)) throw new Error(`${__source}: ${model.slug} would replace a bundled Codex model`);
   catalogSlugs.add(model.slug);

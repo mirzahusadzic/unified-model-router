@@ -178,6 +178,9 @@ test('catalog builds reject missing prompts, duplicate slugs, and replacements o
     /openrouter\/vendor\/bundled would replace a bundled Codex model/);
   assert.match(build([], [{ slug: 'open-router/vendor/typo' }], prompted).stderr,
     /open-router\/vendor\/typo must start with anthropic\/, deepseek\/, openrouter\/, ultra-spark\/, or ultra-spark-private\//);
+  for (const slug of ['openrouter/', 'ultra-spark-private/', 'deepseek/ spaced', 'anthropic//claude']) {
+    assert.match(build([], [{ slug }], prompted).stderr, /needs a model name after its prefix/, slug);
+  }
 });
 
 test('prompt suffixes must name a file in the prompts directory', () => {
@@ -238,6 +241,9 @@ test('verify-catalog checks router entries against the repository and reports wh
   assert.equal(build('show').status, 0);
   edit((models, catalog) => { catalog.models = catalog.models.filter(model => model.slug !== ultraSpark.slug); });
   assert.match(verify(catalogFile).stderr, /^The model catalog lacks ultra-spark\/deepseek-v4\.1-flash-1017;/);
+  assert.equal(build('show').status, 0);
+  edit((models, catalog) => { catalog.models.push({ ...models.get(ultraSparkPrivate.slug), slug: 'ultra-spark-private/stale' }); });
+  assert.match(verify(catalogFile).stderr, /^The model catalog has ultra-spark-private\/stale, which the repository does not;/);
   writeFileSync(catalogFile, 'not json');
   result = verify(catalogFile);
   assert.equal(result.status, 1);

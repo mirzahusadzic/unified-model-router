@@ -61,7 +61,7 @@ Helpers the installers and verifiers call:
 | `scripts/verify-health.mjs` | Check the running router's health, capabilities, and source revision. |
 | `scripts/verify-router.mjs` | Check that the installed router and every module beside it match this repository. |
 | `scripts/codex-daemon.mjs [--verify] <codex-home>` | Restart Codex's app-server daemon after an installation and pin it to the CLI's Codex, or with `--verify`, check that it follows the CLI. Both installers and verifiers use it. |
-| `scripts/verify-catalog.mjs [--report] <models.json>` | Check that a generated or installed catalog carries every router entry with the repository's context limits and prompts, or with `--report`, print what `/model` lists. Both installers and verifiers use it. |
+| `scripts/verify-catalog.mjs [--report] <models.json>` | Check that a generated or installed catalog carries every router entry with the repository's context limits and prompts, and no router entry the repository lacks, or with `--report`, print what `/model` lists. Both installers and verifiers use it. |
 | `platform/windows/private-path.ps1` | On Windows, restrict a file or directory to the current user. |
 | `platform/unix/service-pids.sh`, `platform/windows/service-pids.ps1` | Find the service's router process and the processes it started, which the installers' readiness wait and the verifiers pass to `verify-health.mjs`. |
 

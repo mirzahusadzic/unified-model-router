@@ -433,7 +433,7 @@ node scripts/render-openrouter-entries.mjs
 node install.mjs
 ```
 
-- **Slugs:** catalog entries must start with `anthropic/`, `deepseek/`, `openrouter/`, `ultra-spark/`, or `ultra-spark-private/`; the router removes `openrouter/` before forwarding.
+- **Slugs:** catalog entries must start with `anthropic/`, `deepseek/`, `openrouter/`, `ultra-spark/`, or `ultra-spark-private/` and name a model after it; the router removes `openrouter/` before forwarding.
 - **Build checks:** the catalog build fails on an unsupported slug prefix, a duplicate slug, a slug that matches a bundled Codex model, or a missing prompt file.
 - **Prompts:** every router entry uses the maintained instructions in [`prompts/`](../prompts/), which the installer also injects into its generated catalog. An entry can append one more prompt from that directory by naming it in `router_instructions_suffix`, as Ultra Spark does; the generated Codex catalog omits that field.
 

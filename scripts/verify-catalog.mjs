@@ -44,10 +44,12 @@ const bySlug = new Map(installed.map(model => [model.slug, model]));
 const limitFields = ['context_window', 'max_context_window', 'effective_context_window_percent', 'auto_compact_token_limit'];
 
 let checked = 0;
+const repositorySlugs = new Set();
 for (const name of readdirSync(join(root, 'catalog')).filter(value => value.endsWith('.json'))) {
   const value = JSON.parse(readFileSync(join(root, 'catalog', name), 'utf8'));
   for (const entry of Array.isArray(value) ? value : [value]) {
     if (!usesOpenRouterPrompts(entry.slug)) continue;
+    repositorySlugs.add(entry.slug);
     const model = bySlug.get(entry.slug);
     if (!model) fail(`The model catalog lacks ${entry.slug}`);
     for (const field of limitFields) {
@@ -71,3 +73,9 @@ for (const name of readdirSync(join(root, 'catalog')).filter(value => value.ends
   }
 }
 if (checked === 0) fail('No router catalog entries were checked');
+// A router entry the repository does not have is stale or hand-made.
+for (const model of installed) {
+  if (typeof model?.slug === 'string' && usesOpenRouterPrompts(model.slug) && !repositorySlugs.has(model.slug)) {
+    fail(`The model catalog has ${model.slug}, which the repository does not`);
+  }
+}
