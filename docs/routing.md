@@ -142,16 +142,27 @@ The rule follows session IDs, not content, so three cases start a new record:
 
 ### Routing policy
 
-The router always forwards the model you selected and never substitutes another, structured output included:
+The router always forwards the model you selected and never substitutes another, structured output included. Callers other than Codex steer the rest with request headers, which never reach a provider.
 
-- **DeepSeek with a `json_schema` response format:** DeepSeek's endpoint rejects JSON schemas, so the request becomes JSON mode with the schema appended as the final developer instruction. Replies follow the schema, but the provider does not enforce it, and the unchanged history keeps its cache hits.
-- **That instruction:** Asks for the object at the top level and leaves out the response format's name, which DeepSeek otherwise took as a key to wrap some answers in; `request.forwarded` logs `structuredOutputAdapted`.
-- **Other OpenRouter models:** Receive the schema unchanged.
-- **`X-Codex-Routing-Policy: preserve-model-v1`:** Sent by the OpenRouter-only profile; still accepted, and matches the default. Unknown policy values get HTTP 400.
-- **Forwarding:** The policy header and the local token never reach providers.
+| Structured output for | What the router sends |
+| --- | --- |
+| DeepSeek, with a `json_schema` response format | JSON mode, with the schema as the final developer instruction: the object at the top level, without the format's name, which DeepSeek took as a key to wrap some answers in. Replies follow the schema, but the provider does not enforce it. The history is unchanged, so it keeps its cache hits; `request.forwarded` logs `structuredOutputAdapted`. |
+| Other OpenRouter models and Claude | The schema as sent. |
+
+The headers a caller can send:
+
+| Header | Values | Effect |
+| --- | --- | --- |
+| `X-Codex-Router-Token` | The local token | Required on every request except `GET /health`. |
+| `X-Codex-Routing-Policy` | `preserve-model-v1` | Matches the default; sent by the OpenRouter-only profile. Unknown values get HTTP 400. |
+| `X-Codex-Router-Prompt-Cache` | `instructions`, `none` | Places Claude's cache breakpoint, as described under Claude's two routes. Unknown values get HTTP 400. |
+| `X-Codex-Router-Revision` | A SHA-256 from `/health` | Holds the router's revision, as described under Router capabilities. |
+
+A one-shot client that shares its instructions across calls sends, for example:
 
 ```http
 X-Codex-Routing-Policy: preserve-model-v1
+X-Codex-Router-Prompt-Cache: instructions
 ```
 
 ---
