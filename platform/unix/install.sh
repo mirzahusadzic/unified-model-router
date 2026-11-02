@@ -401,7 +401,8 @@ if [[ "$native_models" == hide ]]; then
 fi
 # Hidden native models stay usable by name, so the warning covers them too.
 cat <<'EOF'
-Tracked Codex sessions never mix native OpenAI or Claude models with
-Muse Spark 1.3 Contributor or Ultra Spark Contributor.
+Tracked Codex sessions never mix native OpenAI, Claude, or non-training
+Ultra Spark models with Muse Spark 1.3 Contributor or Ultra Spark
+Contributor.
 EOF
 printf 'Restart Codex windows opened before this install to pick up the changes.\n'

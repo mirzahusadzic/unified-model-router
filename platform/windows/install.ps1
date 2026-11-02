@@ -360,7 +360,8 @@ if ($NativeModels -eq 'hide') {
 }
 # Hidden native models stay usable by name, so the warning covers them too.
 Write-Host @'
-Tracked Codex sessions never mix native OpenAI or Claude models with
-Muse Spark 1.3 Contributor or Ultra Spark Contributor.
+Tracked Codex sessions never mix native OpenAI, Claude, or non-training
+Ultra Spark models with Muse Spark 1.3 Contributor or Ultra Spark
+Contributor.
 '@
 Write-Host 'Restart Codex windows opened before this install to pick up the changes.'

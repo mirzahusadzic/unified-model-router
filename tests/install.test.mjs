@@ -150,7 +150,7 @@ test('installs with a key file, and fails without a key when it cannot prompt', 
     }
     assert.equal(/^ {4}codex -m gpt-6-astra\r?$/m.test(summary), nativeShown);
     assert.equal(/^Native OpenAI models are hidden from \/model/m.test(summary), !nativeShown);
-    assert.match(summary, /^Tracked Codex sessions never mix native OpenAI or Claude models with\r?\nMuse Spark 1\.3 Contributor or Ultra Spark Contributor\.\r?$/m);
+    assert.match(summary, /^Tracked Codex sessions never mix native OpenAI, Claude, or non-training\r?\nUltra Spark models with Muse Spark 1\.3 Contributor or Ultra Spark\r?\nContributor\.\r?$/m);
     for (const line of summary.split(/\r?\n/)) assert.ok(line.length <= 80, line);
   };
   checkSummary(installed.stdout, false);

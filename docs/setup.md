@@ -168,7 +168,7 @@ How the value is read and applied:
 
 - **Key:** The upstream model slug, without the `openrouter/` prefix; both Ultra Spark entries share DeepSeek's key
 - **Value:** Endpoint tags from `https://openrouter.ai/api/v1/models/<model>/endpoints`, separated by commas; separate models with `;`
-- **Request:** `provider: { order: [...] }`, added only when the request has no `provider` field; after a native OpenAI or Claude model, with `data_collection: "deny"` beside it. The router's own web searches follow the same order for their model.
+- **Request:** `provider: { order: [...] }`, added only when the request has no `provider` field; after a native OpenAI or Claude model, or in a non-training Ultra Spark session, with `data_collection: "deny"` beside it. The router's own web searches follow the same order for their model.
 - **Fallbacks:** Stay enabled, so an outage of the preferred endpoint costs a cache miss instead of failing the turn; OpenRouter's own sticky routing does not apply while an order is set
 - **Errors:** A malformed value stops the router at startup; `request.forwarded` logs the applied `providerOrder`
 
