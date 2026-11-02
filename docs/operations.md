@@ -211,7 +211,7 @@ logs | jq -c 'select(.event == "anthropic.refused")
 | To find out | Look for |
 | --- | --- |
 | Why was a request refused with HTTP 409? | `session.provider_isolation`: the recorded and requested sides; `session.forked_lead_context`: a spawned agent sent an Ultra Spark Contributor lead's tool call IDs to a training-tier model, with the model and the number of matching IDs (`forkedCallIds`) |
-| Were session records lost? | `session.isolation_persist_failed`, `session.isolation_load_failed`: sides not saved, or not read at startup, so sessions start without one; `claude.routes_persist_failed`, `claude.routes_load_failed`: the same for Claude routes, so sessions pick their route again |
+| Were session records lost? | `session.isolation_persist_failed`, `session.isolation_load_failed`: sides not saved, or not read at startup, so sessions start without one, non-training Ultra Spark sessions included (see Troubleshooting); `claude.routes_persist_failed`, `claude.routes_load_failed`: the same for Claude routes, so sessions pick their route again |
 
 ```sh
 logs | jq -c 'select(.event == "session.provider_isolation")
@@ -365,6 +365,7 @@ cp -p "$backup_dir/models.json" "$HOME/.codex/models.json"
 | Muse requests fail before reaching a model | Allow endpoints that may train on inputs in your OpenRouter privacy settings, and check that OpenRouter guardrails allow the Muse provider. |
 | A thread still uses the previous provider | [Activate the unified provider](setup.md#activate-the-provider) and start a new thread. |
 | The local endpoint is unavailable | Check the service status and the router's error log. |
+| `session.isolation_load_failed` after a restart | The router could not read `unified-router/session-sides.json`, so every session starts without a side: until a session records one again, its OpenRouter requests may reach endpoints that collect data, and the training tier is allowed in it. Continue non-training threads only on `ultra-spark-private/…`, whose requests always carry the deny, or start new threads. |
 | The installer or verifier reports another router process answering | A router outside the service holds port 18766, and the service's own copy keeps failing with `router.listen_failed`. Stop the process the verifier names, then rerun the installer. |
 | HTTP 401 about the router token | The client has an older configuration: rerun the installer, restart other open Codex windows, and start a new thread. |
 | OpenRouter returns HTTP 401 | Replace the stored key with `node install.mjs --change-api-key`, or `--api-key-file <path>` without a terminal. |
