@@ -14,6 +14,9 @@ import { adaptForUpstream, prepareOpenRouterRecovery } from './adapt.mjs';
 
 const maxBodyBytes = 64 * 1024 * 1024;
 const routerRevision = sourceRevision(fileURLToPath(import.meta.url));
+// Values of X-Codex-Router-Prompt-Cache, where a caller places Claude's cache
+// breakpoint instead of the router; see messagesRequest.
+const promptCacheModes = ['instructions', 'none'];
 
 const openrouterRejectedDiagnostic = '[router diagnostic] OpenRouter rejected this step. The thread is intact; retry or start a new thread.';
 const anthropicRejectedDiagnostic = '[router diagnostic] Anthropic rejected this step. The thread is intact; retry or start a new thread.';
@@ -231,6 +234,7 @@ const server = http.createServer((request, response) => {
         openrouterRejectionRecovery: 'completed-diagnostic-v1',
         providerIsolation: 'session-v3',
         revisionPrecondition: true,
+        promptCacheModes,
       },
     });
     return;
@@ -309,6 +313,11 @@ const server = http.createServer((request, response) => {
       sendJson(response, 400, { error: { message: 'Unsupported routing policy' } });
       return;
     }
+    const promptCache = request.headers['x-codex-router-prompt-cache'];
+    if (promptCache !== undefined && !promptCacheModes.includes(promptCache)) {
+      sendJson(response, 400, { error: { message: 'Unsupported prompt cache mode' } });
+      return;
+    }
     // The router never substitutes another model, including for structured
     // output; preserve-model-v1 remains accepted for clients that send it.
     const model = requestedModel;
@@ -327,7 +336,7 @@ const server = http.createServer((request, response) => {
     const sessionProtected = protectedSession(requestInfo.sessionId);
     let {
       stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch,
-    } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected });
+    } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache });
     let structuredOutputAdapted = Boolean(structuredOutputInstruction);
     parsed.model = upstreamModel;
     let body;
@@ -356,7 +365,7 @@ const server = http.createServer((request, response) => {
       parsed = JSON.parse(rawBody.toString('utf8'));
       ({
         stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch,
-      } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected }));
+      } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache }));
       structuredOutputAdapted = Boolean(structuredOutputInstruction);
       parsed.model = upstreamModel;
       body = Buffer.from(JSON.stringify(parsed));
@@ -450,7 +459,7 @@ const server = http.createServer((request, response) => {
         return;
       }
       const continuation = openUpstream({
-        target, headers, body: continuationRequestBody, onError: () => resolve(null), log: anthropicLog,
+        target, headers, body: continuationRequestBody, onError: () => resolve(null), log: anthropicLog, promptCache,
       }, continuationResponse => {
         const status = continuationResponse.statusCode || null;
         logEvent(status >= 200 && status < 300 ? 'info' : 'error', 'web_search.continuation', {
@@ -493,6 +502,7 @@ const server = http.createServer((request, response) => {
         requestedModel,
         structuredOutputAdapted,
         promptCachingAdded,
+        promptCache: promptCache || 'default',
         webSearchOverride: webSearch.offered || webSearch.restored > 0 ? { offered: webSearch.offered, restored: webSearch.restored } : null,
         providerOrder,
         dataCollection: parsed.provider?.data_collection ?? null,
@@ -512,7 +522,7 @@ const server = http.createServer((request, response) => {
 
       let upstream;
       try {
-        upstream = openUpstream({ target, headers, body: requestBody, onError: upstreamError, log: anthropicLog }, upstreamResponse => {
+        upstream = openUpstream({ target, headers, body: requestBody, onError: upstreamError, log: anthropicLog, promptCache }, upstreamResponse => {
           if (response.destroyed) {
             upstreamResponse.destroy();
             return;

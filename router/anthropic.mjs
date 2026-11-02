@@ -247,9 +247,15 @@ function claudeMessages(request) {
   return { system, messages };
 }
 
-export function messagesRequest(request) {
+// promptCache is the caller's X-Codex-Router-Prompt-Cache: "instructions" puts
+// the only breakpoint at the end of the system prompt, for one-shot callers whose
+// prompts share it; "none" sets no breakpoint. Codex sends neither.
+export function messagesRequest(request, { promptCache = null } = {}) {
   const { declared, definitions } = claudeTools(request.tools);
   const { system, messages } = claudeMessages(request);
+  if (promptCache === 'instructions' && system.length > 0) {
+    system[system.length - 1] = { ...system.at(-1), cache_control: { type: 'ephemeral' } };
+  }
   const effort = request.reasoning?.effort;
   const outputConfig = {
     ...(claudeEfforts.has(effort) ? { effort } : ['none', 'minimal'].includes(effort) ? { effort: 'low' } : {}),
@@ -279,7 +285,7 @@ export function messagesRequest(request) {
       },
       ...(Object.keys(outputConfig).length > 0 ? { output_config: outputConfig } : {}),
       // Codex resends the whole thread each step; the breakpoint moves with it.
-      cache_control: { type: 'ephemeral' },
+      ...(promptCache ? {} : { cache_control: { type: 'ephemeral' } }),
     },
   };
 }

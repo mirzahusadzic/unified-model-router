@@ -140,7 +140,7 @@ logs | jq -c 'select(.event == "router.ready")
 | To find out | Look for |
 | --- | --- |
 | What went upstream? | `request.forwarded`: route, model, attempt, payload SHA-256, byte length, input item count, routing policy |
-| Did the router change the request? | `request.forwarded`: `providerOrder`, `dataCollection`, `structuredOutputAdapted` (DeepSeek JSON mode), `promptCachingAdded` (Claude's `cache_control`), `webSearchOverride`, a reset of OpenRouter response state, and tool-history repairs |
+| Did the router change the request? | `request.forwarded`: `providerOrder`, `dataCollection`, `structuredOutputAdapted` (DeepSeek JSON mode), `promptCachingAdded` (Claude's `cache_control`), `promptCache` (a caller's `X-Codex-Router-Prompt-Cache`, else `default`), `webSearchOverride`, a reset of OpenRouter response state, and tool-history repairs |
 | Which tool records were repaired? | `history.repaired`: invalid, duplicate, unanswered, or orphaned tool records, and native tool declarations, before an OpenRouter request |
 | Were numbers in tool arguments rewritten? | `tool_arguments.normalized`: the tool whose whole-number floats became integers |
 | How did the request end, and how long did it take? | `request.finished`: local HTTP status (`error` level when `status >= 400`) and total duration; `request.aborted`: the client disconnected first |
@@ -148,7 +148,7 @@ logs | jq -c 'select(.event == "router.ready")
 ```sh
 logs | jq -c 'select(.event == "request.forwarded")
   | {model, attempt, providerOrder, dataCollection,
-     promptCachingAdded}'
+     promptCachingAdded, promptCache}'
 ```
 
 ##### Upstream

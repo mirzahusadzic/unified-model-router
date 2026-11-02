@@ -2087,6 +2087,39 @@ test('Claude slugs run on Anthropic\'s API as Messages requests with the history
   assert.equal(routes['claude-translate'].route, 'anthropic');
 });
 
+test('a caller can put Claude\'s cache breakpoint at the end of its instructions, or set none; Codex\'s stays as it was', async () => {
+  const request = JSON.parse(claudeRequest('Classify this line.', { instructions: 'Shared rubric.' }));
+  const marked = value => JSON.stringify(value).includes('cache_control');
+  const codex = await send(request);
+  assert.deepEqual(codex.body.cache_control, { type: 'ephemeral' });
+  assert.deepEqual(codex.body.system, [{ type: 'text', text: 'Shared rubric.' }]);
+  const before = parsedLogEntries().length;
+  const shared = await send(request, { 'x-codex-router-prompt-cache': 'instructions' });
+  assert.equal(shared.hostname, 'api.anthropic.com');
+  assert.equal(shared.body.cache_control, undefined);
+  assert.deepEqual(shared.body.system, [{ type: 'text', text: 'Shared rubric.', cache_control: { type: 'ephemeral' } }]);
+  assert.ok(!marked(shared.body.messages));
+  assert.equal(shared.headers['x-codex-router-prompt-cache'], undefined);
+  assert.equal(parsedLogEntries().slice(before).find(entry => entry.event === 'request.forwarded').promptCache, 'instructions');
+  // Without instructions there is nothing to mark, and "none" marks nothing.
+  const bare = await send(JSON.parse(claudeRequest('Classify this line.')), { 'x-codex-router-prompt-cache': 'instructions' });
+  assert.ok(!marked(bare.body));
+  assert.ok(!marked((await send(request, { 'x-codex-router-prompt-cache': 'none' })).body));
+  // OpenRouter takes only a breakpoint over the whole prompt, so either mode leaves it off there.
+  for (const mode of ['instructions', 'none']) {
+    const openrouter = await send({ ...request, model: 'openrouter/anthropic/claude-sonnet-5.5' }, { 'x-codex-router-prompt-cache': mode });
+    assert.equal(openrouter.hostname, 'openrouter.ai');
+    assert.equal(openrouter.body.cache_control, undefined);
+    assert.equal(openrouter.headers['x-codex-router-prompt-cache'], undefined);
+  }
+  const health = await exchange('', {}, { method: 'GET', url: '/health' });
+  assert.deepEqual(health.body.capabilities.promptCacheModes, ['instructions', 'none']);
+  const count = forwarded.length;
+  const unknown = await exchange(JSON.stringify(request), { 'x-codex-router-prompt-cache': 'everything' });
+  assert.equal(unknown.status, 400);
+  assert.equal(forwarded.length, count);
+});
+
 test('a step\'s tool output ends Claude\'s turn, so the next request extends the same prefix', async () => {
   const first = [{ role: 'user', content: 'List files.' }, claudeThinking('List.', 'sig-c'),
     { type: 'function_call', call_id: 'toolu_one', name: 'exec_command', arguments: '{"cmd":"ls"}' },
@@ -2231,6 +2264,25 @@ test('web search on Claude\'s direct route runs through OpenRouter and continues
   assert.equal(continuation.hostname, 'api.anthropic.com');
   assert.deepEqual(continuation.body.messages.slice(1).map(message => message.content.map(block => block.type)), [['tool_use'], ['tool_result']]);
   assert.match(continuation.body.messages[2].content[0].content, /688 contributors/);
+});
+
+test('a caller\'s cache breakpoint holds on the step after the router\'s search', async t => {
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'tool_use', id: 'toolu_search', name: 'web_search', input: {} },
+      deltas: [{ type: 'input_json_delta', partial_json: '{"query":"openai codex contributors"}' }] }], { stopReason: 'tool_use' }) },
+    webSearchResult(200),
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
+      deltas: [{ type: 'text_delta', text: 'GitHub lists 688 contributors.' }] }]) },
+  ]);
+  const result = await exchangeRaw(claudeRequest('How many contributors?', { instructions: 'Shared rubric.', tools: [{ type: 'web_search' }] }),
+    { 'x-codex-router-prompt-cache': 'instructions' });
+  assert.equal(parseSse(result.rawBody).at(-1).type, 'response.completed');
+  const [first, , continuation] = forwarded.slice(-3);
+  for (const step of [first, continuation]) {
+    assert.equal(step.hostname, 'api.anthropic.com');
+    assert.equal(step.body.cache_control, undefined);
+    assert.deepEqual(step.body.system.at(-1).cache_control, { type: 'ephemeral' });
+  }
 });
 
 test('Claude history survives shapes other models leave: the functions namespace, odd call IDs, other image types, and a closing reply', async () => {
@@ -2534,4 +2586,22 @@ test('an Anthropic refusal on the step after a search moves the thread to OpenRo
   // Codex's retry of the step goes to OpenRouter.
   await exchange(claudeRequest('How many contributors?'), inClaudeSession('continuation-refused'));
   assert.equal(forwarded.at(-1).hostname, 'openrouter.ai');
+});
+
+test('a caller\'s cache breakpoint choice holds when a refusal moves the request to OpenRouter', async t => {
+  // The tests before this one held new sessions on OpenRouter for an hour.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 4 * 60 * 60 * 1000 });
+  mockUpstreamSequence(t, [
+    { status: 400, body: JSON.stringify({ type: 'error', error: { type: 'invalid_request_error',
+      message: 'Your credit balance is too low to access the Anthropic API.' } }) },
+    { status: 200, body: JSON.stringify({ id: 'resp_fallback', output: [] }) },
+  ]);
+  const result = await exchange(claudeRequest('Go.', { instructions: 'Shared rubric.' }),
+    { ...inClaudeSession('cache-mode-fallback'), 'x-codex-router-prompt-cache': 'instructions' });
+  assert.equal(result.status, 200);
+  const [refused, fallback] = forwarded.slice(-2);
+  assert.equal(refused.hostname, 'api.anthropic.com');
+  assert.deepEqual(refused.body.system.at(-1).cache_control, { type: 'ephemeral' });
+  assert.equal(fallback.hostname, 'openrouter.ai');
+  assert.equal(fallback.body.cache_control, undefined);
 });

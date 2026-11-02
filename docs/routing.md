@@ -29,7 +29,7 @@ On the way, the router adapts each request to its upstream:
 - **Reasoning effort:** DeepSeek accepts only `low`, `high`, `max`, and `none`, so `minimal` becomes `low`, `medium` becomes `high`, and `xhigh` or `ultra` becomes `max`. Other OpenRouter requests keep it, and OpenRouter translates it for each provider; native OpenAI requests keep it too, and on Anthropic's API, `none` and `minimal` become `low`.
 - **Reasoning in history:** Messages, tool calls, and tool results always pass. OpenAI gets encrypted reasoning but not OpenRouter's plaintext reasoning; Claude's signed thinking goes only to Anthropic's API, which gets no other provider's reasoning.
 - **Native tool declarations:** Left out of OpenRouter requests, which reject them: Codex 0.164 records `additional_tools` items in history for Responses Lite models such as GPT-6, and the request's `tools` field already lists the model's tools.
-- **Prompt caching:** Claude requests get a top-level `cache_control` (on OpenRouter, unless they set one); see [Claude's two routes](#claudes-two-routes). Other models keep their providers' implicit caching.
+- **Prompt caching:** Claude requests get a top-level `cache_control`, unless the caller sets one (on OpenRouter) or picks another breakpoint with a header; see [Claude's two routes](#claudes-two-routes). Other models keep their providers' implicit caching.
 - **Tool arguments:** Codex rejects a float where it expects an integer, so for OpenRouter models, whole numbers such as DeepSeek's `"timeout_ms": 60000.0` become integers in the finished arguments Codex parses. Strings, other numbers, and the streamed deltas stay as sent.
 - **Response state:** OpenRouter keeps none, so the router removes `previous_response_id` and turns off `store: true`; Codex sends the full history in `input` anyway.
 - **Rejected steps:** A pre-stream 400 never reaches Codex as HTTP 400. An overflow, or a request too large for the upstream (HTTP 413) or the router's 64 MiB limit, ends with `context_length_exceeded`, so Codex compacts; other 400s get one trimmed retry, then a completed `[router diagnostic]`. See [Rejected steps](operations.md#rejected-steps).
@@ -65,6 +65,8 @@ Each route keeps its own cache and signed thinking:
 - **Fallback:** A refusal no retry fixes sends the same request to OpenRouter, or returns a `[router diagnostic]` without an OpenRouter key; `anthropic.refused` logs it. For the next hour, or until the router restarts, every Claude request goes to OpenRouter, and threads that move stay there.
 - **The same model:** The router never uses Anthropic's server-side `fallbacks`, which can answer with another model.
 - **Prompt caching:** A top-level `cache_control` keeps the cache breakpoint on the last cacheable block as the thread grows. Cache writes cost 1.25 times the input price and reads 5% of it; the cache expires after 5 idle minutes.
+- **A caller's breakpoint:** A caller other than Codex can send `X-Codex-Router-Prompt-Cache`: `instructions` puts the only breakpoint at the end of the system prompt, so one-shot calls that share it read it back, and `none` sets none.
+- **That header on OpenRouter:** OpenRouter takes only a breakpoint over the whole prompt, so either value leaves it off there. An unknown value gets HTTP 400, and the header never reaches a provider.
 - **OpenRouter's cache:** Codex's `prompt_cache_key` keeps a thread on one endpoint while its cache is warm.
 
 The breakpoint the router adds to Claude requests:
@@ -164,6 +166,7 @@ curl -s http://127.0.0.1:18766/health
 | `capabilities.routingPolicies` | Supported routing policies (`preserve-model-v1`). |
 | `capabilities.openrouterRejectionRecovery` | The bounded OpenRouter 400 recovery contract. |
 | `capabilities.providerIsolation` | The [provider isolation](#provider-isolation) rule (`session-v3`: `session-v2` added Claude to the protected side, and `session-v3` sends OpenRouter requests in protected sessions only to endpoints that do not collect data). |
+| `capabilities.promptCacheModes` | Values of `X-Codex-Router-Prompt-Cache` (`instructions`, `none`), which places Claude's cache breakpoint. |
 | `capabilities.revisionPrecondition` | Support for the `X-Codex-Router-Revision` header below. |
 | `revision` | SHA-256 over the running router's entry file and the modules beside it. |
 | `pid` | The router's process ID. The installer and the verifier accept it only from the service's process or one that process started, such as the real node under a version manager's shim. It is self-reported, so the check catches a stray copy of the router, not a process that lies about its PID. |

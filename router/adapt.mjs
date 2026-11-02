@@ -183,7 +183,7 @@ function normalizeToolHistoryForOpenRouter(input) {
 // Shapes a request for its upstream in place and reports what changed, for the
 // forwarding log. OpenAI requests only lose other providers' reasoning, and
 // Claude's requests are translated to Messages at the wire (openUpstream).
-export function adaptForUpstream(request, provider, upstreamModel, scope, { protectedSession = false } = {}) {
+export function adaptForUpstream(request, provider, upstreamModel, scope, { protectedSession = false, promptCache = null } = {}) {
   const adaptation = {
     stateReset: false, providerOrder: null, toolHistoryRepairs: null, structuredOutputInstruction: null,
     promptCachingAdded: false, webSearch: { offered: false, restored: 0 },
@@ -200,7 +200,7 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, { prot
     adaptation.stateReset = normalizeStateForOpenRouter(request);
     adaptation.webSearch = overrideWebSearchForOpenRouter(request, scope);
     // The Messages translation pairs calls with their outputs and adds the cache breakpoint.
-    adaptation.promptCachingAdded = true;
+    adaptation.promptCachingAdded = promptCache !== 'none';
     return adaptation;
   }
   // Claude's signed thinking is readable only on Anthropic's API.
@@ -223,7 +223,9 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, { prot
   request.input = normalizedHistory.input;
   adaptation.toolHistoryRepairs = normalizedHistory.repairs;
   adaptation.structuredOutputInstruction = adaptStructuredOutputForDeepSeek(request, upstreamModel);
-  adaptation.promptCachingAdded = addClaudePromptCaching(request, upstreamModel);
+  // OpenRouter takes only the top-level breakpoint, which caches the whole
+  // prompt, so a caller's own prompt cache choice leaves it off there.
+  adaptation.promptCachingAdded = !promptCache && addClaudePromptCaching(request, upstreamModel);
   return adaptation;
 }
 
