@@ -13,6 +13,7 @@ const prompts = readPrompts(join(root, 'prompts', 'openrouter-instructions.md'),
   join(root, 'prompts', 'openrouter-persistent.md'));
 const normalize = value => value.replace(/\r\n/g, '\n');
 const muse = readEntry('muse-model.json');
+const museStandard = readEntry('muse-standard-model.json');
 const deepseek = readEntry('deepseek-model.json');
 const ultraSpark = readEntry('deepseek-ultra-spark-model.json');
 
@@ -33,7 +34,7 @@ test('checked-in OpenRouter entries carry the rendered maintained prompts', () =
       checked += 1;
     }
   }
-  assert.equal(checked, 7);
+  assert.equal(checked, 8);
 });
 
 test('OpenRouter prompts never mention Codex tools that OpenRouter threads lack', () => {
@@ -60,6 +61,15 @@ test('Muse Spark 1.3 Contributor catalog entry matches the OpenRouter model capa
   assert.equal(muse.supports_parallel_tool_calls, false);
   assert.match(muse.description, /Meta may train on prompts and completions/);
   assert.match(deepseek.description, /DeepSeek's own endpoint may train on prompts and completions/);
+});
+
+test('Muse Spark 1.3 is the Contributor entry on the endpoint that does not train', () => {
+  assert.equal(museStandard.slug, 'openrouter/meta/muse-spark-1.3');
+  assert.equal(museStandard.display_name, 'Muse Spark 1.3');
+  assert.match(museStandard.description, /does not train on prompts or completions/);
+  // Everything but the model's identity matches the Contributor entry.
+  const identity = ({ slug, display_name, description, ...rest }) => rest;
+  assert.deepEqual(identity(museStandard), identity(muse));
 });
 
 test('Claude catalog entries match the model capabilities on each route', () => {
@@ -177,7 +187,7 @@ test('verify-catalog checks router entries against the repository and reports wh
   assert.equal(verify(catalogFile).status, 0, verify(catalogFile).stderr);
   const shown = verify('--report', catalogFile);
   assert.equal(shown.stdout, 'Router models: anthropic/claude-opus-5-5, anthropic/claude-sonnet-5-5, '
-    + `${deepseek.slug}, ${ultraSpark.slug}, ${muse.slug}\n`
+    + `${deepseek.slug}, ${ultraSpark.slug}, ${muse.slug}, ${museStandard.slug}\n`
     + 'Router models usable by name: openrouter/anthropic/claude-opus-5.5, openrouter/anthropic/claude-sonnet-5.5\n'
     + 'Native OpenAI models: 1 in /model (require a ChatGPT plan)\n');
   assert.equal(build('hide').status, 0);

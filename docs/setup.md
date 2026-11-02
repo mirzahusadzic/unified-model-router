@@ -316,6 +316,7 @@ codex --profile unified-openrouter \
 | --- | --- | --- | --- |
 | **DeepSeek V4.1 Flash 1017** (default) | `deepseek/deepseek-v4.1-flash-1017` | 960,000 tokens | DeepSeek's own endpoint may train on its inputs; see [DeepSeek context window](#deepseek-context-window) |
 | **DeepSeek V4.1 Flash 1017 · Ultra Spark** | `ultra-spark/deepseek-v4.1-flash-1017` | 960,000 tokens | Delegates to Muse workers; see [Ultra Spark mode](#ultra-spark-mode) |
+| **Muse Spark 1.3** | `openrouter/meta/muse-spark-1.3` | 1,048,576 tokens | Its endpoint does not train on its inputs; see [Muse Spark 1.3](#muse-spark-13) |
 | **Muse Spark 1.3 Contributor** | `openrouter/meta/muse-spark-1.3-contributor` | 1,048,576 tokens | Meta trains on its inputs; see [Muse Spark 1.3 Contributor](#muse-spark-13-contributor) |
 | **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Sonnet 5.5 and Claude Opus 5.5](#claude-sonnet-55-and-claude-opus-55) |
 | **Claude Opus 5.5** | `anthropic/claude-opus-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet |
@@ -343,6 +344,14 @@ codex -m deepseek/deepseek-v4.1-flash-1017
 
 - **The budget** covers the whole conversation context, including instructions, messages, and tool results; it is not a maximum output length. These are the project's configured limits, not a live measurement of upstream capacity, and native OpenAI models keep their bundled limits.
 - **After a native OpenAI or Claude model:** DeepSeek runs only on an endpoint that does not collect data, such as one you pin with `CODEX_ROUTER_PROVIDER_ORDER`.
+
+#### Muse Spark 1.3
+
+[`catalog/muse-standard-model.json`](../catalog/muse-standard-model.json) adds `openrouter/meta/muse-spark-1.3`, the same model and settings as the Contributor entry below, outside Meta's contributor tier. OpenRouter lists its endpoint as one that does not train on inputs, so it also runs in sessions that used a native OpenAI or Claude model; it costs more than the Contributor tier.
+
+```sh
+codex -m openrouter/meta/muse-spark-1.3
+```
 
 #### Muse Spark 1.3 Contributor
 

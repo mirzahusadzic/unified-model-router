@@ -142,13 +142,14 @@ test('installs with a key file, and fails without a key when it cannot prompt', 
   // hidden ones stay usable by name.
   const checkSummary = (stdout, nativeShown) => {
     const summary = stdout.slice(stdout.indexOf('Start Codex'));
-    for (const slug of ['ultra-spark/deepseek-v4.1-flash-1017', 'openrouter/meta/muse-spark-1.3-contributor',
+    for (const slug of ['ultra-spark/deepseek-v4.1-flash-1017', 'openrouter/meta/muse-spark-1.3',
+      'openrouter/meta/muse-spark-1.3-contributor',
       'anthropic/claude-sonnet-5-5', 'anthropic/claude-opus-5-5']) {
       assert.match(summary, new RegExp(`^ {4}codex -m ${slug.replaceAll('.', '\\.')}\\r?$`, 'm'));
     }
     assert.equal(/^ {4}codex -m gpt-6-astra\r?$/m.test(summary), nativeShown);
     assert.equal(/^Native OpenAI models are hidden from \/model/m.test(summary), !nativeShown);
-    assert.match(summary, /^Tracked Codex sessions never mix native OpenAI or Claude models with\r?\nMuse or Ultra Spark\.\r?$/m);
+    assert.match(summary, /^Tracked Codex sessions never mix native OpenAI or Claude models with\r?\nMuse Spark 1\.3 Contributor or Ultra Spark\.\r?$/m);
     for (const line of summary.split(/\r?\n/)) assert.ok(line.length <= 80, line);
   };
   checkSummary(installed.stdout, false);

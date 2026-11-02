@@ -495,6 +495,10 @@ test('Claude and training-tier models never share a session; Claude may share on
     await refused(model, 'isolation-claude', /already used a Claude model/);
   }
   await send({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello' }, inSession('isolation-claude'));
+  // Muse Spark 1.3 outside the contributor tier is not a training-tier model.
+  const museStandard = await send({ model: 'openrouter/meta/muse-spark-1.3', input: 'Hello' }, inSession('isolation-claude'));
+  assert.equal(museStandard.body.model, 'meta/muse-spark-1.3');
+  assert.equal(museStandard.body.provider.data_collection, 'deny');
   await send({ model: 'gpt-6-astra', input: 'Hello' }, inSession('isolation-claude'));
   await send({ model: 'openrouter/anthropic/claude-opus-5.5', input: 'Hello' }, inSession('isolation-claude'));
 

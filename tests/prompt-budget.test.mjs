@@ -43,6 +43,7 @@ const reviewed = {
       'deepseek/deepseek-v4.1-flash-1017': { requestBytes: 30600, toolBytes: 19000 },
       'openrouter/anthropic/claude-opus-5.5': { requestBytes: 30600, toolBytes: 19000 },
       'openrouter/anthropic/claude-sonnet-5.5': { requestBytes: 30600, toolBytes: 19000 },
+      'openrouter/meta/muse-spark-1.3': { requestBytes: 30600, toolBytes: 19000 },
       'openrouter/meta/muse-spark-1.3-contributor': { requestBytes: 30600, toolBytes: 19000 },
       'ultra-spark/deepseek-v4.1-flash-1017': { requestBytes: 33400, toolBytes: 19000 },
     },

@@ -19,6 +19,7 @@ The same catalog serves main threads, spawned agents, and any interface that exp
 | `gpt-6-astra` | Native Codex backend | `gpt-6-astra` |
 | `deepseek/deepseek-v4.1-flash-1017` | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` |
 | `ultra-spark/deepseek-v4.1-flash-1017` | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` |
+| `openrouter/meta/muse-spark-1.3` | OpenRouter | `meta/muse-spark-1.3` |
 | `openrouter/meta/muse-spark-1.3-contributor` | OpenRouter | `meta/muse-spark-1.3-contributor` |
 | `anthropic/claude-sonnet-5-5` | Anthropic's API, or OpenRouter | `claude-sonnet-5-5`, or `anthropic/claude-sonnet-5.5` |
 | `anthropic/claude-opus-5-5` | Anthropic's API, or OpenRouter | `claude-opus-5-5`, or `anthropic/claude-opus-5.5` |
