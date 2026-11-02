@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Installs or updates the Codex Unified Model Router on Windows.
+Installs or updates the Unified Model Router on Windows.
 .DESCRIPTION
 Usually run through the cross-platform entry point, which also lists the
 environment settings: node install.mjs --help
@@ -17,7 +17,7 @@ node install.mjs
 .EXAMPLE
 node install.mjs --change-api-key
 .LINK
-https://github.com/mirzahusadzic/codex-unified-model-router/blob/main/docs/setup.md
+https://github.com/mirzahusadzic/unified-model-router/blob/main/docs/setup.md
 #>
 [CmdletBinding()]
 param(
@@ -128,7 +128,7 @@ if ($ChangeApiKey -or (-not $ApiKeyFile -and [string]::IsNullOrWhiteSpace($env:O
 
 function Write-Step([string]$Message) { [Console]::Error.WriteLine("==> $Message") }
 
-Write-Step "Installing the Codex Unified Model Router into $CodexHome"
+Write-Step "Installing the Unified Model Router into $CodexHome"
 if ($PromptedKey) { Write-Step 'Using the OpenRouter API key you entered' }
 elseif ($ApiKeyFile) { Write-Step "Reading the OpenRouter API key from $ApiKeyFile" }
 elseif (-not [string]::IsNullOrWhiteSpace($env:OPENROUTER_API_KEY)) { Write-Step 'Using the OpenRouter API key from OPENROUTER_API_KEY' }
@@ -303,7 +303,7 @@ goto run
             Start-Sleep -Milliseconds 200
         }
         if (-not $Healthy) {
-            throw "The Codex Unified Model Router was installed but did not become healthy. Check $RouterErrorLog."
+            throw "The Unified Model Router was installed but did not become healthy. Check $RouterErrorLog."
         }
 
         # Restart the shared app-server daemon so it loads the new
@@ -327,7 +327,7 @@ finally {
     Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue
 }
 
-Write-Host "Installed the Codex Unified Model Router in $CodexHome"
+Write-Host "Installed the Unified Model Router in $CodexHome"
 Write-Host "Backups: $BackupDir"
 Write-Host @'
 

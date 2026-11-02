@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Verifies a Codex Unified Model Router installation on Windows.
+Verifies a Unified Model Router installation on Windows.
 .DESCRIPTION
 Usually run through the cross-platform entry point: node install.mjs --verify
 .PARAMETER NoService
@@ -8,7 +8,7 @@ Skips the router service checks, for installations made with -NoService.
 .EXAMPLE
 node install.mjs --verify
 .LINK
-https://github.com/mirzahusadzic/codex-unified-model-router/blob/main/docs/setup.md
+https://github.com/mirzahusadzic/unified-model-router/blob/main/docs/setup.md
 #>
 [CmdletBinding()]
 param(
@@ -64,7 +64,7 @@ if (-not $NoService) {
     $ServicePids = Get-RouterServicePids -StartCmd $StartCmd
     & node (Join-Path $ScriptsDir 'verify-health.mjs') $RouterPath 'http://127.0.0.1:18766/health' "--service-pid=$ServicePids"
     if ($LASTEXITCODE -ne 0) {
-        throw 'The Codex Unified Model Router health check failed.'
+        throw 'The Unified Model Router health check failed.'
     }
     & node (Join-Path $ScriptsDir 'codex-daemon.mjs') --verify $CodexHome
     if ($LASTEXITCODE -ne 0) { throw 'The Codex app-server daemon is not pinned to the CLI.' }

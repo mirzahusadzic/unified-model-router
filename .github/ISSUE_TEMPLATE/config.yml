@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/mirzahusadzic/codex-unified-model-router/security/advisories/new
+    url: https://github.com/mirzahusadzic/unified-model-router/security/advisories/new
     about: Report vulnerabilities privately, never in a public issue.
   - name: Setup and troubleshooting
-    url: https://github.com/mirzahusadzic/codex-unified-model-router/blob/main/docs/operations.md#troubleshooting
+    url: https://github.com/mirzahusadzic/unified-model-router/blob/main/docs/operations.md#troubleshooting
     about: Check the troubleshooting guide before opening an issue.

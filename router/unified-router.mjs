@@ -283,7 +283,7 @@ const server = http.createServer((request, response) => {
       response.once('finish', () => request.destroy());
       // Codex would retry a 413 with the same bytes; compaction makes the thread smaller.
       sendContextOverflow(response, requestId, 'router-request-too-large',
-        'The request exceeds the Codex Unified Model Router\'s 64 MiB limit.');
+        'The request exceeds the Unified Model Router\'s 64 MiB limit.');
       return;
     }
     chunks.push(chunk);
@@ -389,7 +389,7 @@ const server = http.createServer((request, response) => {
       });
       if (response.destroyed) return;
       if (response.headersSent) response.destroy();
-      else sendJson(response, 502, { error: { message: 'Codex Unified Model Router upstream request failed' } });
+      else sendJson(response, 502, { error: { message: 'Unified Model Router upstream request failed' } });
     };
 
     // Searches and continuations the router starts for this response end with it.

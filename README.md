@@ -1,12 +1,12 @@
-# Codex Unified Model Router
+# Unified Model Router
 
-[![CI](https://github.com/mirzahusadzic/codex-unified-model-router/actions/workflows/ci.yml/badge.svg)](https://github.com/mirzahusadzic/codex-unified-model-router/actions/workflows/ci.yml)
+[![CI](https://github.com/mirzahusadzic/unified-model-router/actions/workflows/ci.yml/badge.svg)](https://github.com/mirzahusadzic/unified-model-router/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Node.js 20+](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![Codex CLI 0.166](https://img.shields.io/badge/Codex%20CLI-0.166-111111)
 ![macOS · Linux · Windows](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey)
 
-A loopback-only router that lets one Codex thread switch between OpenAI, DeepSeek, Claude, Muse Spark and other OpenRouter models from Codex’s own model picker, without losing the thread’s history or crossing its privacy boundaries.
+A loopback-only Responses API router: local programs get one endpoint for OpenAI, DeepSeek, Claude, Muse Spark and other OpenRouter models, with each session's history and privacy boundaries kept across model switches. Codex is its first client: the installer sets Codex up to switch models from its own picker within one thread, and Codex's requests are what the tests replay.
 
 - **Claude on Anthropic's API:** With `ANTHROPIC_API_KEY`, Claude runs on the Messages API with prompt caching and signed thinking, and moves to OpenRouter if the key, credits or spend limit fail; without the key it runs on OpenRouter.
 - **Agent orchestration:** Ultra Spark lets DeepSeek coordinate up to 10 Muse Spark workers with `fork_context: false`, on endpoints that do not train, or on Meta's cheaper training tier as Ultra Spark Contributor.
@@ -135,8 +135,8 @@ Skip the first command if you already have Codex 0.166.0. The first install asks
 
 ```sh
 npm install -g @openai/codex@0.166.0
-git clone https://github.com/mirzahusadzic/codex-unified-model-router.git
-cd codex-unified-model-router
+git clone https://github.com/mirzahusadzic/unified-model-router.git
+cd unified-model-router
 node install.mjs
 node install.mjs --verify
 ```

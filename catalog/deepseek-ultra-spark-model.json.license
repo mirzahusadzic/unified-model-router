@@ -6,7 +6,7 @@ Applies to: deepseek-ultra-spark-model.json
 Source: @openai/codex 0.166.0, codex debug models --bundled
 Upstream project: https://github.com/openai/codex
 
-Modified for Codex Unified Model Router in 2026, derived from the adjacent
+Modified for Unified Model Router in 2026, derived from the adjacent
 DeepSeek entry: Ultra Spark model identity, OpenRouter routing, the
 router_instructions_suffix field, and main and persistent instructions
 maintained in prompts/, including the ultra-spark.md delegation policy.

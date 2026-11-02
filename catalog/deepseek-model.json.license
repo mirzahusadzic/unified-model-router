@@ -6,7 +6,7 @@ Applies to: deepseek-model.json
 Source: @openai/codex 0.166.0, codex debug models --bundled
 Upstream project: https://github.com/openai/codex
 
-Modified for Codex Unified Model Router in 2026: DeepSeek model identity,
+Modified for Unified Model Router in 2026: DeepSeek model identity,
 capabilities, context limits, reasoning settings, and main and persistent
 instructions maintained in prompts/.
 

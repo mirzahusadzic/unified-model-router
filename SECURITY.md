@@ -4,7 +4,7 @@
 
 ### Reporting a vulnerability
 
-Report vulnerabilities privately through GitHub: open the repository's **Security** tab and choose **Report a vulnerability** ([direct link](https://github.com/mirzahusadzic/codex-unified-model-router/security/advisories/new)). Do not open a public issue for a vulnerability.
+Report vulnerabilities privately through GitHub: open the repository's **Security** tab and choose **Report a vulnerability** ([direct link](https://github.com/mirzahusadzic/unified-model-router/security/advisories/new)). Do not open a public issue for a vulnerability.
 
 Include the affected commit, your platform, and the steps to reproduce. Never include real API keys, router tokens, Codex session files, or captured request bodies; use synthetic values instead.
 

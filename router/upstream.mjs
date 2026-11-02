@@ -71,7 +71,7 @@ export function upstreamTrace(headers) {
 export function upstreamHeaders(requestHeaders, provider, bodyLength) {
   if (provider === 'anthropic') {
     if (!anthropicApiKey) {
-      const error = new Error('ANTHROPIC_API_KEY is not configured for the Codex Unified Model Router');
+      const error = new Error('ANTHROPIC_API_KEY is not configured for the Unified Model Router');
       error.statusCode = 503;
       throw error;
     }
@@ -95,7 +95,7 @@ export function upstreamHeaders(requestHeaders, provider, bodyLength) {
 
   if (provider === 'openrouter') {
     if (!openrouterApiKey) {
-      const error = new Error('OPENROUTER_API_KEY is not configured for the Codex Unified Model Router');
+      const error = new Error('OPENROUTER_API_KEY is not configured for the Unified Model Router');
       error.statusCode = 503;
       throw error;
     }

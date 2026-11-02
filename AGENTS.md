@@ -1,6 +1,6 @@
 # Repository guide
 
-Small loopback router that fits Codex's model picker and thread workflow, and serves other local Responses API clients. Prefer catalog changes and focused compatibility fixes; add no CLI commands, frameworks, or runtime dependencies. Options for other clients are opt-in request headers, never forwarded, that leave Codex's requests byte-identical.
+Small loopback Responses API router for local clients; Codex is the first one, set up by the installer and replayed by the tests. Prefer catalog changes and focused compatibility fixes; add no CLI commands, frameworks, or runtime dependencies. Options for other clients are opt-in request headers, never forwarded, that leave Codex's requests byte-identical.
 
 ---
 
@@ -41,6 +41,7 @@ Small loopback router that fits Codex's model picker and thread workflow, and se
 ### Preserve these behaviors
 
 - Loopback only. No credentials or request and response bodies in logs or commits.
+- Names: the project was Codex Unified Model Router. Installed and wire names keep the `codex` prefix and never change: `CODEX_ROUTER_*`, `X-Codex-Router-*`, `X-Codex-Routing-Policy`, the `codex-unified-router` service label and logs, `Codex Unified Router.vbs`, `unified-router/` under the Codex home, and the `unified` provider ID.
 - Auth: OpenRouter requests replace Codex authentication with the OpenRouter key, and Claude requests on Anthropic's API replace it with the Anthropic API key, never a Claude sign-in token; native OpenAI requests keep Codex's authentication.
 - History: keep messages, tool calls and results, and encrypted reasoning. Strip unsupported plaintext reasoning from OpenAI requests, `additional_tools` items from OpenRouter requests, and Claude's signed thinking from every request outside Anthropic's API.
 - Messages translation is append-only, each request a prefix of the next, so Claude's cache and signed thinking stay valid. Claude's breakpoint is a top-level `cache_control` that moves with the thread; only a caller's `X-Codex-Router-Prompt-Cache` (`instructions`: end of the system prompt; `none`) replaces it, on both routes.

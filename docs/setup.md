@@ -27,6 +27,8 @@ The installer configures `~/.codex`, or `CODEX_HOME` when set. Each run:
 
 The helper scripts behind these steps are listed in [CONTRIBUTING.md](../CONTRIBUTING.md#scripts).
 
+The project was named Codex Unified Model Router. Names that installations and callers depend on keep that prefix: the `codex-unified-router` service and logs, the `Codex Unified Router.vbs` startup entry, the `unified-router/` folder under the Codex home, `CODEX_ROUTER_*` settings, and the `X-Codex-Router-*` and `X-Codex-Routing-Policy` headers.
+
 #### Installer settings
 
 Pass settings to `node install.mjs` as flags or environment variables on every run; the installer stores none of them, and `node install.mjs --help` summarizes them. An unknown flag or invalid value stops it before it asks anything or changes a file.
@@ -185,7 +187,7 @@ model_reasoning_effort = "xhigh"
 model_catalog_json = "/absolute/path/to/.codex/models.json"
 
 [model_providers.unified]
-name = "Codex Unified Model Router"
+name = "Unified Model Router"
 base_url = "http://127.0.0.1:18766/v1"
 wire_api = "responses"
 requires_openai_auth = true

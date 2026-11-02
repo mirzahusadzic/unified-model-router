@@ -276,7 +276,7 @@ Each installer run prints its backup directory; stop the router and its automati
 
 #### Return to an earlier Codex version
 
-Each `codex-<version>` tag marks the last commit verified with that Codex version; the [tags page](https://github.com/mirzahusadzic/codex-unified-model-router/tags) and `git tag -l 'codex-*'` list them.
+Each `codex-<version>` tag marks the last commit verified with that Codex version; the [tags page](https://github.com/mirzahusadzic/unified-model-router/tags) and `git tag -l 'codex-*'` list them.
 
 ```sh
 npm install -g @openai/codex@0.163.0

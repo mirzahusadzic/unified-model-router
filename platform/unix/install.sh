@@ -139,7 +139,7 @@ fi
 # Progress goes to standard error, so the final summary stays on standard output.
 step() { printf '==> %s\n' "$*" >&2; }
 
-step "Installing the Codex Unified Model Router into $codex_home"
+step "Installing the Unified Model Router into $codex_home"
 if [[ -n "$prompted_key" ]]; then step "Using the OpenRouter API key you entered"
 elif [[ -n "$api_key_file" ]]; then step "Reading the OpenRouter API key from $api_key_file"
 elif [[ -n "${OPENROUTER_API_KEY:-}" ]]; then step "Using the OpenRouter API key from OPENROUTER_API_KEY"
@@ -304,7 +304,7 @@ EOF_PLIST
         launchctl kickstart -k "gui/$(id -u)/$service_label"
 
         if ! wait_for_router; then
-          printf 'The Codex Unified Model Router was installed but did not become healthy. Check %s.\n' "$HOME/Library/Logs/codex-unified-router.error.log" >&2
+          printf 'The Unified Model Router was installed but did not become healthy. Check %s.\n' "$HOME/Library/Logs/codex-unified-router.error.log" >&2
           exit 1
         fi
       fi
@@ -316,7 +316,7 @@ EOF_PLIST
         mkdir -p "$(dirname "$linux_unit")"
         {
           printf '[Unit]\n'
-          printf 'Description=Codex Unified Model Router\n'
+          printf 'Description=Unified Model Router\n'
           printf 'After=network-online.target\n\n'
           printf '[Service]\n'
           printf 'Type=simple\n'
@@ -336,7 +336,7 @@ EOF_PLIST
         systemctl --user restart "$linux_service"
 
         if ! wait_for_router; then
-          printf 'The Codex Unified Model Router was installed but did not become healthy. Check:\n' >&2
+          printf 'The Unified Model Router was installed but did not become healthy. Check:\n' >&2
           printf '  journalctl --user -u %s\n' "$linux_service" >&2
           exit 1
         fi
@@ -368,7 +368,7 @@ if [[ "$service" -eq 1 ]]; then
   node "$repo_dir/scripts/codex-daemon.mjs" "$codex_home" ${daemon_flag:+"$daemon_flag"}
 fi
 
-printf 'Installed the Codex Unified Model Router in %s\n' "$codex_home"
+printf 'Installed the Unified Model Router in %s\n' "$codex_home"
 printf 'Backups: %s\n' "$backup_dir"
 cat <<'EOF'
 

@@ -40,7 +40,7 @@ for (const [file, openrouterOnly] of [[configFile, false], [profileFile, true]])
   const provider = providerStart < 0 ? [] : providerBlock.slice(providerStart, providerEnd < 0 ? undefined : providerEnd)
     .filter(line => !line.startsWith('#'));
   const expected = [
-    '[model_providers.unified]', 'name = "Codex Unified Model Router"',
+    '[model_providers.unified]', 'name = "Unified Model Router"',
     'base_url = "http://127.0.0.1:18766/v1"', 'wire_api = "responses"',
     `requires_openai_auth = ${!openrouterOnly}`, 'supports_websockets = false',
     openrouterOnly

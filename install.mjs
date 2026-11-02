@@ -5,8 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repository = 'https://github.com/mirzahusadzic/codex-unified-model-router';
-const help = `Install or update the Codex Unified Model Router, or verify an installation.
+const repository = 'https://github.com/mirzahusadzic/unified-model-router';
+const help = `Install or update the Unified Model Router, or verify an installation.
 
 Usage:
   node install.mjs [options]
