@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdtempSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import { tmpdir } from 'node:os';
@@ -15,7 +15,11 @@ let now = Date.parse('2026-01-01T00:00:00Z');
 mock.method(Date, 'now', () => now);
 
 const home = mkdtempSync(join(tmpdir(), 'session-retention-'));
-writeFileSync(join(home, 'session-sides.json'), JSON.stringify({ 'idle-side': { side: 'openai', at: now } }));
+writeFileSync(join(home, 'session-sides.json'), JSON.stringify({
+  'idle-side': { side: 'openai', at: now },
+  // A non-training Ultra Spark side survives startup however old it is.
+  'idle-private': { side: 'private', at: now - 400 * day },
+}));
 writeFileSync(join(home, 'claude-routes.json'), JSON.stringify({ 'idle-route': { route: 'openrouter', at: now } }));
 Object.assign(process.env, {
   CODEX_ROUTER_ENV_FILE: join(home, 'openrouter.env'),
@@ -84,6 +88,20 @@ async function post(model, sessionId) {
 test('a session side older than 30 days no longer refuses the other side', async () => {
   now += 31 * day;
   assert.equal(await post('openrouter/meta/muse-spark-1.3-contributor', 'idle-side'), 200);
+});
+
+test('a non-training Ultra Spark side never expires: its session keeps deny and refuses the training tier', async () => {
+  now += 31 * day;
+  assert.equal(await post('deepseek/deepseek-v4.1-flash-1017', 'idle-private'), 200);
+  assert.equal(forwarded.at(-1).body.provider.data_collection, 'deny');
+  const count = forwarded.length;
+  assert.equal(await post('openrouter/meta/muse-spark-1.3-contributor', 'idle-private'), 409);
+  assert.equal(forwarded.length, count);
+  // Recording another session prunes expired records, but not this one.
+  await post('openrouter/meta/muse-spark-1.3-contributor', 'fresh-training');
+  const stored = JSON.parse(readFileSync(join(home, 'session-sides.json'), 'utf8'));
+  assert.equal(stored['idle-private'].side, 'private');
+  assert.equal(stored['fresh-training'].side, 'training');
 });
 
 test('a Claude route older than 30 days no longer pins the session to OpenRouter', async () => {

@@ -129,7 +129,7 @@ The rule covers models on either route, and whole agent trees:
 - **Spawned agents:** Share their parent's session, so the rule covers whole agent trees: a Muse worker spawned by a native OpenAI thread is refused.
 - **DeepSeek and other OpenRouter models:** Work with either side. After a native OpenAI or Claude model or Ultra Spark, a session's OpenRouter requests, the router's own searches included, carry `provider.data_collection: "deny"`, so they reach only endpoints that do not collect data; DeepSeek's own endpoint, which may train on prompts, is left out.
 - **No such endpoint:** Codex receives a `[router diagnostic]` instead of OpenRouter's HTTP 404: pin the model to another endpoint or start a new thread. `request.forwarded` logs `dataCollection`.
-- **Records:** Each session's side, without content, in `unified-router/session-sides.json` for 30 days after its last request, so the rule survives restarts.
+- **Records:** Each session's side, without content, in `unified-router/session-sides.json` for 30 days after its last request, so the rule survives restarts. A non-training Ultra Spark session's record never expires, so its thread stays off the training tier however long it sits idle.
 - **Opt-out:** None; `CODEX_ROUTER_TRAINING_MODELS` can only add models to the training tier.
 
 The rule follows session IDs, not content, so three cases start a new record:

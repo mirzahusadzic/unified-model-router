@@ -22,15 +22,18 @@ const sessionSideRetentionMs = 30 * 24 * 60 * 60 * 1000;
 // Requests refresh a session's record at most daily, so active sessions never expire.
 const sessionSideRefreshMs = 24 * 60 * 60 * 1000;
 // A record older than the retention counts as absent, also in a router that has
-// run for longer than that; the next write prunes it.
-const current = entry => (entry && Date.now() - entry.at < sessionSideRetentionMs ? entry : undefined);
+// run for longer than that; the next write prunes it. A non-training Ultra Spark
+// session never expires: its thread holds code that must not reach an endpoint
+// that trains, however long it sits idle.
+const lasting = entry => entry?.side === 'private';
+const current = entry => (entry && (lasting(entry) || Date.now() - entry.at < sessionSideRetentionMs) ? entry : undefined);
 
 function loadSessionSides() {
   try {
     const stored = JSON.parse(readFileSync(sessionSidesFile, 'utf8'));
     const cutoff = Date.now() - sessionSideRetentionMs;
     return new Map(Object.entries(stored).filter(([, entry]) => Object.hasOwn(sideNames, entry?.side)
-      && entry.at > cutoff));
+      && (lasting(entry) || entry.at > cutoff)));
   } catch (error) {
     // A missing record is a first start. An unreadable one forgets every
     // session's side, so isolation starts over and the loss is logged.
@@ -64,7 +67,7 @@ export function protectedSession(sessionId) {
 
 function recordSessionSide(sessionId, side) {
   const cutoff = Date.now() - sessionSideRetentionMs;
-  for (const [id, entry] of sessionSides) if (entry.at <= cutoff) sessionSides.delete(id);
+  for (const [id, entry] of sessionSides) if (!lasting(entry) && entry.at <= cutoff) sessionSides.delete(id);
   sessionSides.set(sessionId, { side, at: Date.now() });
   persistJson(sessionSidesFile, Object.fromEntries(sessionSides), 'session.isolation_persist_failed');
 }
