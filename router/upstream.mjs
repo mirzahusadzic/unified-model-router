@@ -12,8 +12,9 @@ export const contextOverflowMessage = 'The conversation exceeds the model contex
 const maxCapturedUpstreamErrorBytes = 256 * 1024;
 
 // OpenRouter slugs: `deepseek/` and `openrouter/<vendor>/<model>`, plus the
-// `ultra-spark/` alias, which selects DeepSeek with the delegation policy.
-const openrouterPrefixes = ['deepseek/', 'openrouter/', 'ultra-spark/'];
+// `ultra-spark/` and `ultra-spark-private/` aliases, which select DeepSeek with
+// a delegation policy: to Contributor workers, or to non-training ones.
+const openrouterPrefixes = ['deepseek/', 'openrouter/', 'ultra-spark/', 'ultra-spark-private/'];
 // `anthropic/<model ID>` selects Claude on its route: Anthropic's API, or
 // OpenRouter's copy of the same model (see claudeRoute).
 const anthropicPrefix = 'anthropic/';
@@ -50,6 +51,7 @@ export function upstreamModelFor(model, provider) {
   if (model.startsWith(anthropicPrefix)) return model.replace(/-(\d+)-(\d+)$/, '-$1.$2');
   if (model.startsWith('openrouter/')) return model.slice('openrouter/'.length);
   if (model.startsWith('ultra-spark/')) return `deepseek/${model.slice('ultra-spark/'.length)}`;
+  if (model.startsWith('ultra-spark-private/')) return `deepseek/${model.slice('ultra-spark-private/'.length)}`;
   return model;
 }
 

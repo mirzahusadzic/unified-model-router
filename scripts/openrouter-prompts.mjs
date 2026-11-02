@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 export const suffixField = 'router_instructions_suffix';
 
 export function usesOpenRouterPrompts(slug) {
-  return ['anthropic/', 'deepseek/', 'openrouter/', 'ultra-spark/'].some(prefix => slug.startsWith(prefix));
+  return ['anthropic/', 'deepseek/', 'openrouter/', 'ultra-spark/', 'ultra-spark-private/'].some(prefix => slug.startsWith(prefix));
 }
 
 export function readPrompts(instructionsFile, persistentFile) {

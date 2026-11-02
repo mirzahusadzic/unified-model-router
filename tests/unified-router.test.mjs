@@ -515,6 +515,36 @@ test('Claude and training-tier models never share a session; Claude may share on
   assert.equal(sides['isolation-openai-claude'].side, 'openai');
 });
 
+test('non-training Ultra Spark keeps its whole session off collecting endpoints and away from the training tier', async () => {
+  const inSession = id => ({ 'session-id': id });
+  const lead = 'ultra-spark-private/deepseek-v4.1-flash-1017';
+  // Even without a session ID, the lead reaches only endpoints that do not collect data.
+  const bare = await send({ model: lead, input: 'Hello' });
+  assert.equal(bare.hostname, 'openrouter.ai');
+  assert.equal(bare.body.model, 'deepseek/deepseek-v4.1-flash-1017');
+  assert.equal(bare.body.provider.data_collection, 'deny');
+  await send({ model: lead, input: 'Hello' }, inSession('private-lead'));
+  for (const model of ['openrouter/meta/muse-spark-1.3', 'deepseek/deepseek-v4.1-flash-1017']) {
+    const upstream = await send({ model, input: 'Hello' }, inSession('private-lead'));
+    assert.equal(upstream.body.provider.data_collection, 'deny', model);
+  }
+  await send({ model: 'anthropic/claude-sonnet-5-5', input: 'Hello' }, inSession('private-lead'));
+  for (const model of ['openrouter/meta/muse-spark-1.3-contributor', 'ultra-spark/deepseek-v4.1-flash-1017']) {
+    const count = forwarded.length;
+    const result = await exchange(JSON.stringify({ model, input: 'Hello' }), inSession('private-lead'));
+    assert.equal(result.status, 409, model);
+    assert.match(result.body.error.message, /already used non-training Ultra Spark/);
+    assert.equal(forwarded.length, count);
+  }
+  // A training-tier session cannot switch to it either.
+  await send({ model: 'ultra-spark/deepseek-v4.1-flash-1017', input: 'Hello' }, inSession('contributor-lead'));
+  const refused = await exchange(JSON.stringify({ model: lead, input: 'Hello' }), inSession('contributor-lead'));
+  assert.equal(refused.status, 409);
+  assert.match(refused.body.error.message, /Start a new thread to use non-training Ultra Spark/);
+  const sides = JSON.parse(readFileSync(join(routerHome, 'session-sides.json'), 'utf8'));
+  assert.equal(sides['private-lead'].side, 'private');
+});
+
 test('a training-tier worker that carries the Ultra Spark lead history is refused before forwarding', async () => {
   // Codex gives the main thread a thread ID equal to the session ID.
   const lead = { 'session-id': 'fork-guard', 'thread-id': 'fork-guard' };

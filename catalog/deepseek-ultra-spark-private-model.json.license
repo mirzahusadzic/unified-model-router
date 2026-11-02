@@ -1,0 +1,20 @@
+SPDX-FileCopyrightText: 2025 OpenAI
+SPDX-FileCopyrightText: 2026 Mirza Husadzic
+SPDX-License-Identifier: Apache-2.0
+
+Applies to: deepseek-ultra-spark-private-model.json
+Source: @openai/codex 0.166.0, codex debug models --bundled
+Upstream project: https://github.com/openai/codex
+
+Modified for Codex Unified Model Router in 2026, derived from the adjacent
+DeepSeek entry: non-training Ultra Spark model identity, OpenRouter routing,
+the router_instructions_suffix field, and main and persistent instructions
+maintained in prompts/, including the ultra-spark-private.md delegation
+policy.
+
+The following model_messages sections match templates in the bundled Codex
+catalog: approvals, collaboration_modes, auto_review, multi_agent,
+token_budget, guardian_v2, and confirmation_policies.
+
+This adjacent notice accompanies the JSON file because JSON does not support
+comments. Keep it with the file when redistributing it.

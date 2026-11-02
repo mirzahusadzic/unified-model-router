@@ -166,7 +166,7 @@ CODEX_ROUTER_PROVIDER_ORDER=deepseek/deepseek-v4.1-flash-1017=deepseek
 
 How the value is read and applied:
 
-- **Key:** The upstream model slug, without the `openrouter/` prefix; Ultra Spark shares DeepSeek's key
+- **Key:** The upstream model slug, without the `openrouter/` prefix; both Ultra Spark entries share DeepSeek's key
 - **Value:** Endpoint tags from `https://openrouter.ai/api/v1/models/<model>/endpoints`, separated by commas; separate models with `;`
 - **Request:** `provider: { order: [...] }`, added only when the request has no `provider` field; after a native OpenAI or Claude model, with `data_collection: "deny"` beside it. The router's own web searches follow the same order for their model.
 - **Fallbacks:** Stay enabled, so an outage of the preferred endpoint costs a cache miss instead of failing the turn; OpenRouter's own sticky routing does not apply while an order is set
@@ -224,7 +224,7 @@ For one session, `codex --enable apps` or `codex --disable apps` overrides the c
 
 Codex 0.163.0 checks some agent actions, such as writes outside the workspace, with a hidden guardian thread on `codex-auto-review`, a native OpenAI model, even when `approvals_reviewer` is `user`. It sends that model the agent transcript, tool calls and results included.
 
-- **Why it is off:** in a session that used Muse or Ultra Spark, provider isolation refuses those requests, so the action stalls; in other sessions, the transcript goes to OpenAI and needs a ChatGPT plan.
+- **Why it is off:** in a session that used Muse Spark 1.3 Contributor or Ultra Spark Contributor, provider isolation refuses those requests, so the action stalls; in other sessions, the transcript goes to OpenAI and needs a ChatGPT plan.
 - **Default:** `guardian_approval = false` in `[features]`, so approval requests go to you as configured.
 To keep the guardian, for example for `approvals_reviewer = "auto_review"`, which runs on it, install with:
 
@@ -315,7 +315,8 @@ codex --profile unified-openrouter \
 | Model | Slug | Context | Notes |
 | --- | --- | --- | --- |
 | **DeepSeek V4.1 Flash 1017** (default) | `deepseek/deepseek-v4.1-flash-1017` | 960,000 tokens | DeepSeek's own endpoint may train on its inputs; see [DeepSeek context window](#deepseek-context-window) |
-| **DeepSeek V4.1 Flash 1017 · Ultra Spark** | `ultra-spark/deepseek-v4.1-flash-1017` | 960,000 tokens | Delegates to Muse workers; see [Ultra Spark mode](#ultra-spark-mode) |
+| **DeepSeek V4.1 Flash 1017 · Ultra Spark** | `ultra-spark-private/deepseek-v4.1-flash-1017` | 960,000 tokens | Delegates to Muse Spark 1.3 workers, off endpoints that train; see [Ultra Spark mode](#ultra-spark-mode) |
+| **DeepSeek V4.1 Flash 1017 · Ultra Spark Contributor** | `ultra-spark/deepseek-v4.1-flash-1017` | 960,000 tokens | Delegates to Muse Contributor workers; see [Ultra Spark Contributor](#ultra-spark-contributor) |
 | **Muse Spark 1.3** | `openrouter/meta/muse-spark-1.3` | 1,048,576 tokens | Its endpoint does not train on its inputs; see [Muse Spark 1.3](#muse-spark-13) |
 | **Muse Spark 1.3 Contributor** | `openrouter/meta/muse-spark-1.3-contributor` | 1,048,576 tokens | Meta trains on its inputs; see [Muse Spark 1.3 Contributor](#muse-spark-13-contributor) |
 | **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Sonnet 5.5 and Claude Opus 5.5](#claude-sonnet-55-and-claude-opus-55) |
@@ -380,33 +381,43 @@ codex -m anthropic/claude-opus-5-5
 - **Reasoning effort:** `codex -m` keeps your configured effort, `xhigh` from the installer; to spend less, pick a lower one with `/model` or `-c model_reasoning_effort=medium`. On Anthropic's API, `none` and `minimal` become `low`.
 - **API key only:** use an Anthropic API key from [platform.claude.com](https://platform.claude.com/); it bills its organization's API credits. Anthropic does not allow Claude sign-in tokens (`sk-ant-oat…`) in other tools, so the router ignores one and logs `anthropic.sign_in_token_ignored`, and the verifier fails.
 - **Older threads:** `openrouter/anthropic/claude-sonnet-5.5` and `openrouter/anthropic/claude-opus-5.5` are hidden from `/model` but still work by name, for threads that started on them.
-- **Isolation:** Claude never shares a session with Muse, Ultra Spark, or other training-tier models, on either route.
+- **Isolation:** Claude never shares a session with Muse Spark 1.3 Contributor, Ultra Spark Contributor, or other training-tier models, on either route.
 
 #### Ultra Spark mode
 
-**DeepSeek V4.1 Flash 1017 · Ultra Spark** (`ultra-spark/deepseek-v4.1-flash-1017`) is the same upstream DeepSeek model with [`prompts/ultra-spark.md`](../prompts/ultra-spark.md) added, which makes delegation the default. Switch it on or off in a thread with `/model`.
+**DeepSeek V4.1 Flash 1017 · Ultra Spark** (`ultra-spark-private/deepseek-v4.1-flash-1017`) is the same upstream DeepSeek model with [`prompts/ultra-spark-private.md`](../prompts/ultra-spark-private.md) added, which makes delegation the default. No endpoint in its session trains on inputs, so it suits private code. Switch it on or off in a thread with `/model`.
+
+```sh
+codex -m ultra-spark-private/deepseek-v4.1-flash-1017
+```
+
+- **Workers:** it splits broad tasks such as reviews across parallel Muse Spark 1.3 workers, up to 10 at once, and hands them chores such as code searches, test runs, and mechanical edits through Codex's `spawn_agent` tool. Workers are spawned with `fork_context: false`, so they see only their task.
+- **The lead:** design decisions, final edits, and verification stay in the DeepSeek thread; the default reasoning effort is `max`.
+- **No training:** from its first request, with or without a session ID, every OpenRouter request in its session, the router's searches included, carries `provider.data_collection: "deny"`. DeepSeek then runs on an endpoint that does not collect data instead of DeepSeek's own, so your OpenRouter settings must allow one, such as Fireworks.
+- **Isolation:** the router refuses the training tier in its session, so a worker spawned on Muse Spark 1.3 Contributor gets HTTP 409. It may share a session with native OpenAI and Claude models.
+- **Cost:** Muse Spark 1.3 workers cost more than Contributor workers.
+
+#### Ultra Spark Contributor
+
+**DeepSeek V4.1 Flash 1017 · Ultra Spark Contributor** (`ultra-spark/deepseek-v4.1-flash-1017`) runs the same policy, [`prompts/ultra-spark.md`](../prompts/ultra-spark.md), with Muse Spark 1.3 Contributor workers, which cost less because Meta trains on their inputs. The router counts it as training-tier, so it refuses it in a session that already used a native OpenAI or Claude model.
 
 ```sh
 codex -m ultra-spark/deepseek-v4.1-flash-1017
 ```
-
-- **Workers:** it splits broad tasks such as reviews across parallel Muse Spark 1.3 Contributor workers, up to 10 at once, and hands them chores such as code searches, test runs, and mechanical edits through Codex's `spawn_agent` tool. Workers are spawned with `fork_context: false`, so they see only their task.
-- **The lead:** design decisions, final edits, and verification stay in the DeepSeek thread; the default reasoning effort is `max`.
-- **Isolation:** the router refuses it in a session that already used a native OpenAI or Claude model.
 
 > [!WARNING]
 > Workers inherit Muse's contributor terms, so use the mode only for code you are willing to share.
 
 ##### Forked-context backstop
 
-The router also catches workers forked with the lead's history, by their tool call IDs. It remembers, in memory, the tool call IDs in Ultra Spark requests from a main thread, whose thread ID Codex sets equal to the session ID; a spawned agent in the same session that sends one of them to Muse or another training-tier model other than Ultra Spark gets HTTP 409 (`forked_lead_context`), and nothing is sent upstream. Switching the lead thread itself to Muse with `/model` is still allowed.
+The router also catches workers forked with the lead's history, by their tool call IDs. It remembers, in memory, the tool call IDs in Ultra Spark Contributor requests from a main thread, whose thread ID Codex sets equal to the session ID; a spawned agent in the same session that sends one of them to Muse or another training-tier model other than Ultra Spark Contributor gets HTTP 409 (`forked_lead_context`), and nothing is sent upstream. Switching the lead thread itself to Muse with `/model` is still allowed.
 
 The check matches tool call IDs only, so it misses:
 
 - a fork made before the lead's first tool call;
-- an Ultra Spark lead that is itself a spawned agent rather than a main thread;
+- a lead that is itself a spawned agent rather than a main thread;
 - requests without both a session ID and a thread ID, which Codex 0.163 and later send as `session-id` and `thread-id`;
-- the lead's IDs that aged out of the most recent 4,096 kept per session, that belong to a session beyond the 256 most recently active Ultra Spark leads, or that were forgotten when the router restarted, until the lead's next request records them again.
+- the lead's IDs that aged out of the most recent 4,096 kept per session, that belong to a session beyond the 256 most recently active Ultra Spark Contributor leads, or that were forgotten when the router restarted, until the lead's next request records them again.
 
 #### Add a model
 
@@ -422,7 +433,7 @@ node scripts/render-openrouter-entries.mjs
 node install.mjs
 ```
 
-- **Slugs:** catalog entries must start with `anthropic/`, `deepseek/`, `openrouter/`, or `ultra-spark/`; the router removes `openrouter/` before forwarding.
+- **Slugs:** catalog entries must start with `anthropic/`, `deepseek/`, `openrouter/`, `ultra-spark/`, or `ultra-spark-private/`; the router removes `openrouter/` before forwarding.
 - **Build checks:** the catalog build fails on an unsupported slug prefix, a duplicate slug, a slug that matches a bundled Codex model, or a missing prompt file.
 - **Prompts:** every router entry uses the maintained instructions in [`prompts/`](../prompts/), which the installer also injects into its generated catalog. An entry can append one more prompt from that directory by naming it in `router_instructions_suffix`, as Ultra Spark does; the generated Codex catalog omits that field.
 

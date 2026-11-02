@@ -45,6 +45,7 @@ const reviewed = {
       'openrouter/anthropic/claude-sonnet-5.5': { requestBytes: 30600, toolBytes: 19000 },
       'openrouter/meta/muse-spark-1.3': { requestBytes: 30600, toolBytes: 19000 },
       'openrouter/meta/muse-spark-1.3-contributor': { requestBytes: 30600, toolBytes: 19000 },
+      'ultra-spark-private/deepseek-v4.1-flash-1017': { requestBytes: 33400, toolBytes: 19000 },
       'ultra-spark/deepseek-v4.1-flash-1017': { requestBytes: 33400, toolBytes: 19000 },
     },
     // Features Codex turns on under the installer's configuration.

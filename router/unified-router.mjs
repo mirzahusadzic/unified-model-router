@@ -21,7 +21,7 @@ const promptCacheModes = ['instructions', 'none'];
 const openrouterRejectedDiagnostic = '[router diagnostic] OpenRouter rejected this step. The thread is intact; retry or start a new thread.';
 const anthropicRejectedDiagnostic = '[router diagnostic] Anthropic rejected this step. The thread is intact; retry or start a new thread.';
 const openrouterRefusedDiagnostic = status => `[router diagnostic] OpenRouter refused this request (HTTP ${status}). Check OPENROUTER_API_KEY, your OpenRouter credits, and your OpenRouter settings for this model.`;
-const openrouterDataPolicyDiagnostic = '[router diagnostic] This session used a native OpenAI or Claude model, so its OpenRouter requests go only to endpoints that do not collect data, and your OpenRouter settings allow none for this model. Pin it to such an endpoint (CODEX_ROUTER_PROVIDER_ORDER and your OpenRouter guardrails), or start a new thread.';
+const openrouterDataPolicyDiagnostic = '[router diagnostic] This session used a native OpenAI or Claude model or non-training Ultra Spark, so its OpenRouter requests go only to endpoints that do not collect data, and your OpenRouter settings allow none for this model. Pin it to such an endpoint (CODEX_ROUTER_PROVIDER_ORDER and your OpenRouter guardrails), or start a new thread.';
 const anthropicRefusedDiagnostic = reason => `[router diagnostic] Anthropic's API refused this request (${reason}), and no OpenRouter key is configured to fall back to. Check ANTHROPIC_API_KEY and its organization's credits and limits.`;
 
 function isAuthenticated(headers) {
@@ -333,7 +333,8 @@ const server = http.createServer((request, response) => {
       return;
     }
     if (side === 'anthropic') recordClaudeRoute(requestInfo.sessionId, target.provider);
-    const sessionProtected = protectedSession(requestInfo.sessionId);
+    // Non-training Ultra Spark stays off collecting endpoints even without a session ID.
+    const sessionProtected = protectedSession(requestInfo.sessionId) || side === 'private';
     let {
       stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch,
     } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache });

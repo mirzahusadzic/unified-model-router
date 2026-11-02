@@ -20,7 +20,7 @@ Small loopback router that fits Codex's model picker and thread workflow, and se
 | Claude on Anthropic's API: Messages translation, refusals | `router/anthropic.mjs` |
 | OpenRouter models | `catalog/*.json` |
 | Shared OpenRouter prompts | `prompts/openrouter-instructions.md`, `prompts/openrouter-persistent.md` |
-| Ultra Spark delegation policy | `prompts/ultra-spark.md` |
+| Ultra Spark delegation policies | `prompts/ultra-spark-private.md` (non-training), `prompts/ultra-spark.md` (Contributor) |
 | Catalog generation, prompt rendering | `scripts/build-catalog.mjs`, `scripts/openrouter-prompts.mjs` |
 | Managed Codex settings, TOML handling | `scripts/merge-config.mjs`, `scripts/toml-lines.mjs` |
 | Installation, service startup | `install.mjs` (entry), `platform/unix/install.sh`, `platform/windows/install.ps1`; the service's process lookup in `platform/*/service-pids.*` |
@@ -31,7 +31,7 @@ Small loopback router that fits Codex's model picker and thread workflow, and se
 
 ### Catalog
 
-- Slugs: `openrouter/` is stripped; `deepseek/` is kept; `ultra-spark/` forwards as `deepseek/` with the Ultra Spark prompt; `anthropic/<model ID>` goes to Anthropic's API with `ANTHROPIC_API_KEY`, else to OpenRouter, and a session keeps its first route; anything else goes to the native Codex backend and its bundled models.
+- Slugs: `openrouter/` is stripped; `deepseek/` is kept; `ultra-spark-private/` and `ultra-spark/` forward as `deepseek/` with their Ultra Spark prompts (workers on Muse Spark 1.3, or on Contributor); `anthropic/<model ID>` goes to Anthropic's API with `ANTHROPIC_API_KEY`, else to OpenRouter, and a session keeps its first route; anything else goes to the native Codex backend and its bundled models.
 - New OpenRouter entry: copy `catalog/deepseek-model.json`, slug `openrouter/<upstream-model-slug>`, review context limits, effective context percentage, reasoning levels, tool support, and prompts. An entry does not prove upstream compatibility.
 - After editing prompts or adding an entry: `node scripts/render-openrouter-entries.mjs`, and commit the updated entries. `router_instructions_suffix` appends one more `prompts/` file; the generated Codex catalog omits that field.
 - Model context settings live in the catalog; native models keep their bundled limits.
@@ -48,8 +48,8 @@ Small loopback router that fits Codex's model picker and thread workflow, and se
 - Anthropic refusals no retry fixes (credits, spend limits, the key, model access) go to OpenRouter, or end in a router diagnostic without an OpenRouter key. A 401 never reaches Codex, which would refresh its ChatGPT sign-in.
 - Never substitute a model, across Claude's routes included; never send Anthropic's `fallbacks`. Structured output stays on the selected model; DeepSeek, which rejects JSON schemas, gets JSON mode plus the schema as the final developer instruction: object at the top level, response format's name left out.
 - Stream chunks as they arrive; cancel unfinished upstream requests on client disconnect.
-- Training tier: Muse and the Ultra Spark workers send inputs to Meta's contributor tier, which trains on them; say so in docs and catalog descriptions. Ultra Spark spawns workers with `fork_context: false`. Backstop: refuse Muse and other non-Ultra Spark training-tier requests from spawned agents carrying tool call IDs from an Ultra Spark main thread.
-- Isolation: native OpenAI and Claude models never share a session with the training tier. After either, the session's OpenRouter requests, router searches included, carry `provider.data_collection: "deny"`, keeping their output off endpoints that may train, such as DeepSeek's own.
+- Training tier: Muse Spark 1.3 Contributor and Ultra Spark Contributor's workers send inputs to Meta's contributor tier, which trains on them; say so in docs and catalog descriptions. Both Ultra Sparks spawn workers with `fork_context: false`. Backstop: refuse Muse and other training-tier requests, except Ultra Spark Contributor's, from spawned agents carrying tool call IDs from an Ultra Spark Contributor main thread.
+- Isolation: native OpenAI models, Claude models, and non-training Ultra Spark (`ultra-spark-private/`, side `private`) never share a session with the training tier. After any of them, the session's OpenRouter requests, router searches included, carry `provider.data_collection: "deny"`, keeping their output off endpoints that may train, such as DeepSeek's own; Ultra Spark's lead carries the deny even without a session ID.
 - Web search for OpenRouter models and Claude: Codex's hosted `web_search` becomes a router function run through OpenRouter's web plugin; Codex sees a native `web_search_call`; later requests carry the stored results as its output. Keep a step's calls ahead of their outputs, so DeepSeek sees one assistant turn. Never log the query.
 - Defaults: Codex analytics and the OpenAI-hosted guardian reviewer off; no router data to third parties; the sandbox's network setting left to Codex unless `CODEX_ROUTER_SANDBOX_NETWORK=1`.
 - Unix and Windows installers stay aligned, backups and preservation of unrelated configuration included.

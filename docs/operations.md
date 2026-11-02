@@ -210,7 +210,7 @@ logs | jq -c 'select(.event == "anthropic.refused")
 
 | To find out | Look for |
 | --- | --- |
-| Why was a request refused with HTTP 409? | `session.provider_isolation`: the recorded and requested sides; `session.forked_lead_context`: a spawned agent sent an Ultra Spark lead's tool call IDs to a training-tier model, with the model and the number of matching IDs (`forkedCallIds`) |
+| Why was a request refused with HTTP 409? | `session.provider_isolation`: the recorded and requested sides; `session.forked_lead_context`: a spawned agent sent an Ultra Spark Contributor lead's tool call IDs to a training-tier model, with the model and the number of matching IDs (`forkedCallIds`) |
 | Were session records lost? | `session.isolation_persist_failed`, `session.isolation_load_failed`: sides not saved, or not read at startup, so sessions start without one; `claude.routes_persist_failed`, `claude.routes_load_failed`: the same for Claude routes, so sessions pick their route again |
 
 ```sh
@@ -360,8 +360,8 @@ cp -p "$backup_dir/models.json" "$HOME/.codex/models.json"
 | Something broke after a Codex update | Compare `codex --version` and `codex app-server daemon version` with the tested version in [Codex version](setup.md#codex-version). Install it with `npm install -g @openai/codex@0.166.0`, then rerun `node install.mjs`, which also pins the daemon. |
 | A new model is missing from `/model` | Rerun the installer to rebuild the catalog, then restart Codex. |
 | OpenAI models are missing from `/model` | They are hidden without an active ChatGPT plan; install with `CODEX_ROUTER_NATIVE_MODELS=show` to list them anyway. |
-| Ultra Spark does not spawn workers | Select `ultra-spark/deepseek-v4.1-flash-1017` ("· Ultra Spark") in a new thread, and rerun the installer so the catalog carries the current policy. Small single-step tasks run without workers by design. |
-| HTTP 409 `provider_isolation` | The session already used the other side: native OpenAI or Claude, or Muse or Ultra Spark. Start a new thread; see [Provider isolation](routing.md#provider-isolation). |
+| Ultra Spark does not spawn workers | Select `ultra-spark-private/deepseek-v4.1-flash-1017` ("· Ultra Spark") or `ultra-spark/deepseek-v4.1-flash-1017` ("· Ultra Spark Contributor") in a new thread, and rerun the installer so the catalog carries the current policy. Small single-step tasks run without workers by design. |
+| HTTP 409 `provider_isolation` | The session already used the other side: native OpenAI, Claude, or Ultra Spark, or the training tier, such as Muse Spark 1.3 Contributor or Ultra Spark Contributor. Start a new thread; see [Provider isolation](routing.md#provider-isolation). |
 | Muse requests fail before reaching a model | Allow endpoints that may train on inputs in your OpenRouter privacy settings, and check that OpenRouter guardrails allow the Muse provider. |
 | A thread still uses the previous provider | [Activate the unified provider](setup.md#activate-the-provider) and start a new thread. |
 | The local endpoint is unavailable | Check the service status and the router's error log. |

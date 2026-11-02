@@ -31,7 +31,7 @@ The installed router is a separate copy under your Codex home directory. Run `no
 | `router/anthropic.mjs` | Claude on Anthropic's API: Responses-to-Messages request translation, the streamed-event translation back, and refusals that move Claude to OpenRouter. |
 | `router/common.mjs` | Helpers shared by the router's modules and the health verifier, including the source revision. |
 | `catalog/` | Router model entries for the Codex catalog (OpenRouter models and Claude), each with a license notice. |
-| `prompts/` | Shared OpenRouter instructions and the Ultra Spark delegation policy. |
+| `prompts/` | Shared OpenRouter instructions and the two Ultra Spark delegation policies. |
 | `install.mjs` | Cross-platform entry point that runs the installer or verifier for the current OS. |
 | `platform/` | Per-OS installers and verifiers in `unix/` and `windows/`, plus the Windows access-control helper; see the [platform index](platform/README.md). |
 | `scripts/` | Verifiers, installer helpers, and development tools; see [Scripts](#scripts). |

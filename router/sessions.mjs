@@ -10,8 +10,10 @@ import { anthropicApiKey, envFile, fileEnvironment, logEvent, openrouterApiKey, 
 // training-tier output never reaches OpenAI. Claude models are kept apart from
 // the training tier the same way, since Anthropic's terms bar using Claude's
 // output to train competing models; Claude and OpenAI may share a session.
-// Ultra Spark counts as training because its workers run on Muse. The list can
-// be extended, not disabled.
+// Ultra Spark counts as training because its workers run on Muse Contributor;
+// non-training Ultra Spark (`ultra-spark-private/`) is a protected side of its
+// own, so its session never reaches the training tier or an endpoint that
+// collects data. The list can be extended, not disabled.
 const trainingModels = new Set(['meta/muse-spark-1.3-contributor', ...String(
   process.env.CODEX_ROUTER_TRAINING_MODELS || fileEnvironment.CODEX_ROUTER_TRAINING_MODELS || '',
 ).split(',').map(model => model.trim()).filter(Boolean)]);
@@ -40,21 +42,24 @@ function loadSessionSides() {
 const sideNames = {
   openai: 'a native OpenAI model',
   anthropic: 'a Claude model',
+  private: 'non-training Ultra Spark',
   training: 'a model whose provider trains on its inputs',
 };
 const sessionSides = loadSessionSides();
 
 export function sessionSide(requestedModel, provider, upstreamModel) {
   if (provider === 'openai') return 'openai';
+  if (requestedModel.startsWith('ultra-spark-private/')) return 'private';
   if (requestedModel.startsWith('ultra-spark/') || trainingModels.has(upstreamModel)) return 'training';
   if (provider === 'anthropic' || upstreamModel.startsWith('anthropic/')) return 'anthropic';
   return null;
 }
 
-// A session that used a native OpenAI or Claude model: its OpenRouter
-// requests go only to endpoints that do not collect data (see adaptForUpstream).
+// A session that used a native OpenAI or Claude model, or non-training Ultra
+// Spark: its OpenRouter requests go only to endpoints that do not collect data
+// (see adaptForUpstream).
 export function protectedSession(sessionId) {
-  return ['openai', 'anthropic'].includes(sessionId ? current(sessionSides.get(sessionId))?.side : undefined);
+  return ['openai', 'anthropic', 'private'].includes(sessionId ? current(sessionSides.get(sessionId))?.side : undefined);
 }
 
 function recordSessionSide(sessionId, side) {

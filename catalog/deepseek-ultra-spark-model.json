@@ -1,6 +1,6 @@
 {
   "slug": "ultra-spark/deepseek-v4.1-flash-1017",
-  "display_name": "DeepSeek V4.1 Flash 1017 · Ultra Spark",
+  "display_name": "DeepSeek V4.1 Flash 1017 · Ultra Spark Contributor",
   "description": "DeepSeek delegating chores to Muse Spark 1.3 Contributor workers; Meta trains on worker inputs, so use only in fresh threads on share-safe code",
   "default_reasoning_level": "max",
   "supported_reasoning_levels": [

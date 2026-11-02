@@ -18,6 +18,7 @@ The same catalog serves main threads, spawned agents, and any interface that exp
 | --- | --- | --- |
 | `gpt-6-astra` | Native Codex backend | `gpt-6-astra` |
 | `deepseek/deepseek-v4.1-flash-1017` | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` |
+| `ultra-spark-private/deepseek-v4.1-flash-1017` | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` |
 | `ultra-spark/deepseek-v4.1-flash-1017` | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` |
 | `openrouter/meta/muse-spark-1.3` | OpenRouter | `meta/muse-spark-1.3` |
 | `openrouter/meta/muse-spark-1.3-contributor` | OpenRouter | `meta/muse-spark-1.3-contributor` |
@@ -110,22 +111,23 @@ How a search runs, from the call to later turns:
 
 ### Provider isolation
 
-Native OpenAI and Claude models never share a tracked Codex session with models whose provider trains on their inputs; OpenAI and Claude may share one. Anthropic's terms bar using Claude's output to train competing models, so Claude is kept from the training tier as OpenAI is. Once a tracked session uses one side, the router refuses the other:
+Native OpenAI models, Claude models, and Ultra Spark never share a tracked Codex session with models whose provider trains on their inputs; they may share one with each other. Anthropic's terms bar using Claude's output to train competing models, so Claude is kept from the training tier as OpenAI is. Once a tracked session uses one side, the router refuses the other:
 
 > [!IMPORTANT]
 > A refused request gets HTTP 409 (`provider_isolation`) and a message to start a new thread; nothing is sent upstream.
 
 | A session that has used | Cannot use |
 | --- | --- |
-| A native OpenAI model or a Claude model | Muse Spark 1.3 Contributor, Ultra Spark, or another training-tier model |
-| Muse Spark 1.3 Contributor or Ultra Spark | A native OpenAI model or a Claude model |
+| A native OpenAI model, a Claude model, or Ultra Spark | Muse Spark 1.3 Contributor, Ultra Spark Contributor, or another training-tier model |
+| Muse Spark 1.3 Contributor or Ultra Spark Contributor | A native OpenAI model, a Claude model, or Ultra Spark |
 
 The rule covers models on either route, and whole agent trees:
 
 - **Claude:** Counts on either route, `openrouter/anthropic/…` slugs included.
-- **Ultra Spark:** Counts as training-tier, because its workers run on Muse.
+- **Ultra Spark Contributor:** Counts as training-tier, because its workers run on Muse Spark 1.3 Contributor.
+- **Ultra Spark:** Counts with OpenAI and Claude, and its lead's requests stay off collecting endpoints even without a session ID.
 - **Spawned agents:** Share their parent's session, so the rule covers whole agent trees: a Muse worker spawned by a native OpenAI thread is refused.
-- **DeepSeek and other OpenRouter models:** Work with either side. After a native OpenAI or Claude model, a session's OpenRouter requests, the router's own searches included, carry `provider.data_collection: "deny"`, so they reach only endpoints that do not collect data; DeepSeek's own endpoint, which may train on prompts, is left out.
+- **DeepSeek and other OpenRouter models:** Work with either side. After a native OpenAI or Claude model or Ultra Spark, a session's OpenRouter requests, the router's own searches included, carry `provider.data_collection: "deny"`, so they reach only endpoints that do not collect data; DeepSeek's own endpoint, which may train on prompts, is left out.
 - **No such endpoint:** Codex receives a `[router diagnostic]` instead of OpenRouter's HTTP 404: pin the model to another endpoint or start a new thread. `request.forwarded` logs `dataCollection`.
 - **Records:** Each session's side, without content, in `unified-router/session-sides.json` for 30 days after its last request, so the rule survives restarts.
 - **Opt-out:** None; `CODEX_ROUTER_TRAINING_MODELS` can only add models to the training tier.

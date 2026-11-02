@@ -16,6 +16,7 @@ const muse = readEntry('muse-model.json');
 const museStandard = readEntry('muse-standard-model.json');
 const deepseek = readEntry('deepseek-model.json');
 const ultraSpark = readEntry('deepseek-ultra-spark-model.json');
+const ultraSparkPrivate = readEntry('deepseek-ultra-spark-private-model.json');
 
 test('checked-in OpenRouter entries carry the rendered maintained prompts', () => {
   let checked = 0;
@@ -34,7 +35,7 @@ test('checked-in OpenRouter entries carry the rendered maintained prompts', () =
       checked += 1;
     }
   }
-  assert.equal(checked, 8);
+  assert.equal(checked, 9);
 });
 
 test('OpenRouter prompts never mention Codex tools that OpenRouter threads lack', () => {
@@ -101,7 +102,7 @@ test('Ultra Spark is DeepSeek with a delegation policy that keeps thread history
     'base_instructions', 'model_messages'];
   const capabilities = entry => Object.fromEntries(Object.entries(entry).filter(([key]) => !identity.includes(key)));
   assert.equal(ultraSpark.slug, 'ultra-spark/deepseek-v4.1-flash-1017');
-  assert.equal(ultraSpark.display_name, 'DeepSeek V4.1 Flash 1017 · Ultra Spark');
+  assert.equal(ultraSpark.display_name, 'DeepSeek V4.1 Flash 1017 · Ultra Spark Contributor');
   assert.deepEqual(capabilities(ultraSpark), capabilities(deepseek));
   assert.equal(ultraSpark[suffixField], 'ultra-spark.md');
   assert.equal(ultraSpark.default_reasoning_level, 'max');
@@ -109,6 +110,28 @@ test('Ultra Spark is DeepSeek with a delegation policy that keeps thread history
   assert.match(policy, new RegExp(`model: "${muse.slug.replaceAll('.', '\\.')}"`));
   assert.match(policy, /fork_context: false/);
   assert.match(policy, /Never fork this thread's history into a worker/);
+});
+
+test('non-training Ultra Spark is the same entry and policy with Muse Spark 1.3 workers', () => {
+  const identity = ['slug', 'display_name', 'description', suffixField, 'base_instructions', 'model_messages'];
+  const settings = entry => Object.fromEntries(Object.entries(entry).filter(([key]) => !identity.includes(key)));
+  assert.equal(ultraSparkPrivate.slug, 'ultra-spark-private/deepseek-v4.1-flash-1017');
+  assert.equal(ultraSparkPrivate.display_name, 'DeepSeek V4.1 Flash 1017 · Ultra Spark');
+  assert.match(ultraSparkPrivate.description, /do not train on inputs/);
+  assert.deepEqual(settings(ultraSparkPrivate), settings(ultraSpark));
+  assert.equal(ultraSparkPrivate[suffixField], 'ultra-spark-private.md');
+  // The two policies differ only in the worker model and what workers may be given.
+  const read = name => readFileSync(join(root, 'prompts', name), 'utf8').split('\n');
+  const contributor = read('ultra-spark.md');
+  const nonTraining = read('ultra-spark-private.md');
+  assert.equal(nonTraining.length, contributor.length);
+  const changed = contributor.flatMap((line, index) => (line === nonTraining[index] ? [] : [index]));
+  for (const index of changed) {
+    const swapped = contributor[index].replaceAll(muse.slug, museStandard.slug);
+    if (swapped !== nonTraining[index]) assert.match(contributor[index], /^- Never give workers secrets/);
+  }
+  assert.ok(!nonTraining.join('\n').includes(muse.slug));
+  assert.match(nonTraining.join('\n'), new RegExp(`model: "${museStandard.slug.replaceAll('.', '\\.')}"`));
 });
 
 test('catalog builds append an entry suffix and omit the router-only field from Codex', t => {
@@ -154,7 +177,7 @@ test('catalog builds reject missing prompts, duplicate slugs, and replacements o
     [{ slug: 'openrouter/vendor/bundled', context_window: 999999 }], prompted).stderr,
     /openrouter\/vendor\/bundled would replace a bundled Codex model/);
   assert.match(build([], [{ slug: 'open-router/vendor/typo' }], prompted).stderr,
-    /open-router\/vendor\/typo must start with anthropic\/, deepseek\/, openrouter\/, or ultra-spark\//);
+    /open-router\/vendor\/typo must start with anthropic\/, deepseek\/, openrouter\/, ultra-spark\/, or ultra-spark-private\//);
 });
 
 test('prompt suffixes must name a file in the prompts directory', () => {
@@ -187,7 +210,7 @@ test('verify-catalog checks router entries against the repository and reports wh
   assert.equal(verify(catalogFile).status, 0, verify(catalogFile).stderr);
   const shown = verify('--report', catalogFile);
   assert.equal(shown.stdout, 'Router models: anthropic/claude-opus-5-5, anthropic/claude-sonnet-5-5, '
-    + `${deepseek.slug}, ${ultraSpark.slug}, ${muse.slug}, ${museStandard.slug}\n`
+    + `${deepseek.slug}, ${ultraSpark.slug}, ${ultraSparkPrivate.slug}, ${muse.slug}, ${museStandard.slug}\n`
     + 'Router models usable by name: openrouter/anthropic/claude-opus-5.5, openrouter/anthropic/claude-sonnet-5.5\n'
     + 'Native OpenAI models: 1 in /model (require a ChatGPT plan)\n');
   assert.equal(build('hide').status, 0);

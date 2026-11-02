@@ -63,7 +63,7 @@ const catalogSlugs = new Set();
 for (const entry of entries) {
   const { __source, [suffixField]: _suffix, ...model } = entry;
   if (!usesOpenRouterPrompts(model.slug)) {
-    throw new Error(`${__source}: ${model.slug} must start with anthropic/, deepseek/, openrouter/, or ultra-spark/`);
+    throw new Error(`${__source}: ${model.slug} must start with anthropic/, deepseek/, openrouter/, ultra-spark/, or ultra-spark-private/`);
   }
   if (catalogSlugs.has(model.slug)) throw new Error(`${__source}: duplicate catalog slug ${model.slug}`);
   if (bySlug.has(model.slug)) throw new Error(`${__source}: ${model.slug} would replace a bundled Codex model`);

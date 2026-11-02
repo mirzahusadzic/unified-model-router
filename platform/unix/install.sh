@@ -375,7 +375,9 @@ cat <<'EOF'
 Start Codex with a model, or switch with /model:
   DeepSeek V4.1 Flash 1017 (default)
     codex
-  Ultra Spark: DeepSeek delegating to Muse workers
+  Ultra Spark: DeepSeek delegating to non-training Muse workers
+    codex -m ultra-spark-private/deepseek-v4.1-flash-1017
+  Ultra Spark Contributor: DeepSeek delegating to Muse Contributor workers
     codex -m ultra-spark/deepseek-v4.1-flash-1017
   Muse Spark 1.3
     codex -m openrouter/meta/muse-spark-1.3
@@ -392,7 +394,7 @@ fi
 cat <<'EOF'
 
 Meta trains on everything sent to Muse Spark 1.3 Contributor, including
-Ultra Spark's workers, so use them for share-safe code only.
+Ultra Spark Contributor's workers, so use them for share-safe code only.
 EOF
 if [[ "$native_models" == hide ]]; then
   printf 'Native OpenAI models are hidden from /model (%s).\n' "$native_reason"
@@ -400,6 +402,6 @@ fi
 # Hidden native models stay usable by name, so the warning covers them too.
 cat <<'EOF'
 Tracked Codex sessions never mix native OpenAI or Claude models with
-Muse Spark 1.3 Contributor or Ultra Spark.
+Muse Spark 1.3 Contributor or Ultra Spark Contributor.
 EOF
 printf 'Restart Codex windows opened before this install to pick up the changes.\n'
