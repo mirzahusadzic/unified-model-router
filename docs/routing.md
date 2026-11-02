@@ -68,7 +68,7 @@ Each route keeps its own cache and signed thinking:
 - **The same model:** The router never uses Anthropic's server-side `fallbacks`, which can answer with another model.
 - **Prompt caching:** A top-level `cache_control` keeps the cache breakpoint on the last cacheable block as the thread grows. Cache writes cost 1.25 times the input price and reads 5% of it; the cache expires after 5 idle minutes.
 - **A caller's breakpoint:** A caller other than Codex can send `X-Codex-Router-Prompt-Cache`: `instructions` puts the only breakpoint at the end of the system prompt, so one-shot calls that share it read it back, and `none` sets none.
-- **That header on OpenRouter:** OpenRouter takes only a breakpoint over the whole prompt, so either value leaves it off there. An unknown value gets HTTP 400, and the header never reaches a provider.
+- **That header on OpenRouter:** OpenRouter takes only a breakpoint over the whole prompt, so either value leaves it off there, even one in the caller's own request body. An unknown value gets HTTP 400, and the header never reaches a provider.
 - **OpenRouter's cache:** Codex's `prompt_cache_key` keeps a thread on one endpoint while its cache is warm.
 
 The breakpoint the router adds to Claude requests:

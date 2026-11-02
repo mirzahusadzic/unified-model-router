@@ -247,6 +247,18 @@ function claudeMessages(request) {
   return { system, messages };
 }
 
+// Whether the Messages translation has a system prompt to mark: the
+// instructions, or text in the developer or system messages that open the input.
+export function hasSystemPrompt(request) {
+  if (typeof request.instructions === 'string' && request.instructions) return true;
+  for (const item of Array.isArray(request.input) ? request.input : []) {
+    const type = item?.type ?? (item?.role ? 'message' : null);
+    if (type !== 'message' || !['developer', 'system'].includes(item.role)) return false;
+    if (claudeContent(item.content).some(block => block.type === 'text')) return true;
+  }
+  return false;
+}
+
 // promptCache is the caller's X-Codex-Router-Prompt-Cache: "instructions" puts
 // the only breakpoint at the end of the system prompt, for one-shot callers whose
 // prompts share it; "none" sets no breakpoint. Codex sends neither.

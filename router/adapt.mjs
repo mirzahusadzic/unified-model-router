@@ -1,6 +1,6 @@
 // Shaping a request for its upstream, and the bounded retry after a rejected
 // step.
-import { isAnthropicThinking } from './anthropic.mjs';
+import { hasSystemPrompt, isAnthropicThinking } from './anthropic.mjs';
 import { openrouterApiKey, providerOrders } from './config.mjs';
 import { overrideWebSearchForOpenRouter } from './web-search.mjs';
 
@@ -199,8 +199,9 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, { prot
     }
     adaptation.stateReset = normalizeStateForOpenRouter(request);
     adaptation.webSearch = overrideWebSearchForOpenRouter(request, scope);
-    // The Messages translation pairs calls with their outputs and adds the cache breakpoint.
-    adaptation.promptCachingAdded = promptCache !== 'none';
+    // The Messages translation pairs calls with their outputs and adds the cache
+    // breakpoint: at the end of the system prompt in `instructions` mode, if there is one.
+    adaptation.promptCachingAdded = !promptCache || (promptCache === 'instructions' && hasSystemPrompt(request));
     return adaptation;
   }
   // Claude's signed thinking is readable only on Anthropic's API.
@@ -224,7 +225,9 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, { prot
   adaptation.toolHistoryRepairs = normalizedHistory.repairs;
   adaptation.structuredOutputInstruction = adaptStructuredOutputForDeepSeek(request, upstreamModel);
   // OpenRouter takes only the top-level breakpoint, which caches the whole
-  // prompt, so a caller's own prompt cache choice leaves it off there.
+  // prompt, so a caller's own prompt cache choice leaves it off there, a
+  // breakpoint in the caller's own body included.
+  if (promptCache && upstreamModel.startsWith('anthropic/')) delete request.cache_control;
   adaptation.promptCachingAdded = !promptCache && addClaudePromptCaching(request, upstreamModel);
   return adaptation;
 }

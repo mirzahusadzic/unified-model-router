@@ -2135,13 +2135,23 @@ test('a caller can put Claude\'s cache breakpoint at the end of its instructions
   assert.ok(!marked(shared.body.messages));
   assert.equal(shared.headers['x-codex-router-prompt-cache'], undefined);
   assert.equal(parsedLogEntries().slice(before).find(entry => entry.event === 'request.forwarded').promptCache, 'instructions');
-  // Without instructions there is nothing to mark, and "none" marks nothing.
+  // Without instructions there is nothing to mark, and the log says so; "none" marks nothing.
+  const bareLogs = parsedLogEntries().length;
   const bare = await send(JSON.parse(claudeRequest('Classify this line.')), { 'x-codex-router-prompt-cache': 'instructions' });
   assert.ok(!marked(bare.body));
+  assert.equal(parsedLogEntries().slice(bareLogs).find(entry => entry.event === 'request.forwarded').promptCachingAdded, false);
+  // Opening developer messages form the system prompt, so its end gets the breakpoint.
+  const opening = await send(JSON.parse(claudeRequest([
+    { type: 'message', role: 'developer', content: [{ type: 'input_text', text: 'Shared rubric.' }] },
+    { role: 'user', content: 'Classify this line.' },
+  ])), { 'x-codex-router-prompt-cache': 'instructions' });
+  assert.deepEqual(opening.body.system, [{ type: 'text', text: 'Shared rubric.', cache_control: { type: 'ephemeral' } }]);
   assert.ok(!marked((await send(request, { 'x-codex-router-prompt-cache': 'none' })).body));
-  // OpenRouter takes only a breakpoint over the whole prompt, so either mode leaves it off there.
+  // OpenRouter takes only a breakpoint over the whole prompt, so either mode leaves it off
+  // there, a breakpoint in the caller's own body included.
   for (const mode of ['instructions', 'none']) {
-    const openrouter = await send({ ...request, model: 'openrouter/anthropic/claude-sonnet-5.5' }, { 'x-codex-router-prompt-cache': mode });
+    const openrouter = await send({ ...request, model: 'openrouter/anthropic/claude-sonnet-5.5',
+      cache_control: { type: 'ephemeral', ttl: '1h' } }, { 'x-codex-router-prompt-cache': mode });
     assert.equal(openrouter.hostname, 'openrouter.ai');
     assert.equal(openrouter.body.cache_control, undefined);
     assert.equal(openrouter.headers['x-codex-router-prompt-cache'], undefined);
