@@ -17,11 +17,14 @@ const routerRevision = sourceRevision(fileURLToPath(import.meta.url));
 // Values of X-Codex-Router-Prompt-Cache, where a caller places Claude's cache
 // breakpoint instead of the router; see messagesRequest.
 const promptCacheModes = ['instructions', 'none'];
+// Values of X-Codex-Router-Data-Policy: `deny` keeps a request, with or without
+// a session, off the training tier and off endpoints that collect data.
+const dataPolicies = ['deny'];
 
 const openrouterRejectedDiagnostic = '[router diagnostic] OpenRouter rejected this step. The thread is intact; retry or start a new thread.';
 const anthropicRejectedDiagnostic = '[router diagnostic] Anthropic rejected this step. The thread is intact; retry or start a new thread.';
 const openrouterRefusedDiagnostic = status => `[router diagnostic] OpenRouter refused this request (HTTP ${status}). Check OPENROUTER_API_KEY, your OpenRouter credits, and your OpenRouter settings for this model.`;
-const openrouterDataPolicyDiagnostic = '[router diagnostic] This session used a native OpenAI or Claude model or non-training Ultra Spark, so its OpenRouter requests go only to endpoints that do not collect data, and your OpenRouter settings allow none for this model. Pin it to such an endpoint (CODEX_ROUTER_PROVIDER_ORDER and your OpenRouter guardrails), or start a new thread.';
+const openrouterDataPolicyDiagnostic = '[router diagnostic] This session used a native OpenAI or Claude model or non-training Ultra Spark, or this request asked for the deny data policy, so its OpenRouter requests go only to endpoints that do not collect data, and your OpenRouter settings allow none for this model. Pin it to such an endpoint (CODEX_ROUTER_PROVIDER_ORDER and your OpenRouter guardrails), or start a new thread.';
 const anthropicRefusedDiagnostic = reason => `[router diagnostic] Anthropic's API refused this request (${reason}), and no OpenRouter key is configured to fall back to. Check ANTHROPIC_API_KEY and its organization's credits and limits.`;
 
 function isAuthenticated(headers) {
@@ -235,6 +238,7 @@ const server = http.createServer((request, response) => {
         providerIsolation: 'session-v3',
         revisionPrecondition: true,
         promptCacheModes,
+        dataPolicies,
       },
     });
     return;
@@ -318,6 +322,11 @@ const server = http.createServer((request, response) => {
       sendJson(response, 400, { error: { message: 'Unsupported prompt cache mode' } });
       return;
     }
+    const requestDataPolicy = request.headers['x-codex-router-data-policy'];
+    if (requestDataPolicy !== undefined && !dataPolicies.includes(requestDataPolicy)) {
+      sendJson(response, 400, { error: { message: 'Unsupported data policy' } });
+      return;
+    }
     // The router never substitutes another model, including for structured
     // output; preserve-model-v1 remains accepted for clients that send it.
     const model = requestedModel;
@@ -325,7 +334,14 @@ const server = http.createServer((request, response) => {
     if (target.provider === 'anthropic' && claudeRoute(requestInfo.sessionId) === 'openrouter') target = openrouterTarget;
 
     let upstreamModel = upstreamModelFor(model, target.provider);
-    const side = sessionSide(requestedModel, target.provider, upstreamModel);
+    // A request under the deny data policy counts as the non-training side when
+    // its model has no side of its own, so its session stays off the training tier.
+    const side = sessionSide(requestedModel, target.provider, upstreamModel) ?? (requestDataPolicy === 'deny' ? 'private' : null);
+    if (requestDataPolicy === 'deny' && side === 'training') {
+      logEvent('error', 'data_policy.refused', { requestId, sessionId: requestInfo.sessionId, model: requestedModel });
+      sendJson(response, 409, { error: { code: 'data_policy', message: 'This request asks for endpoints that do not train on inputs, and this model\'s provider trains on them. Choose a model outside the training tier.' } });
+      return;
+    }
     const refusal = sessionRefusal({ requestId, sessionId: requestInfo.sessionId, threadId, requestedModel,
       side, input: parsed.input });
     if (refusal) {
@@ -333,8 +349,9 @@ const server = http.createServer((request, response) => {
       return;
     }
     if (side === 'anthropic') recordClaudeRoute(requestInfo.sessionId, target.provider);
-    // Non-training Ultra Spark stays off collecting endpoints even without a session ID.
-    const sessionProtected = protectedSession(requestInfo.sessionId) || side === 'private';
+    // Non-training Ultra Spark and the deny data policy stay off collecting
+    // endpoints even without a session ID.
+    const sessionProtected = protectedSession(requestInfo.sessionId) || side === 'private' || requestDataPolicy === 'deny';
     let {
       stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch,
     } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache });
@@ -504,6 +521,7 @@ const server = http.createServer((request, response) => {
         structuredOutputAdapted,
         promptCachingAdded,
         promptCache: promptCache || 'default',
+        requestDataPolicy: requestDataPolicy || 'default',
         webSearchOverride: webSearch.offered || webSearch.restored > 0 ? { offered: webSearch.offered, restored: webSearch.restored } : null,
         providerOrder,
         dataCollection: parsed.provider?.data_collection ?? null,

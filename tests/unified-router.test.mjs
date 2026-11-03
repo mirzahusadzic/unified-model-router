@@ -533,16 +533,49 @@ test('non-training Ultra Spark keeps its whole session off collecting endpoints 
     const count = forwarded.length;
     const result = await exchange(JSON.stringify({ model, input: 'Hello' }), inSession('private-lead'));
     assert.equal(result.status, 409, model);
-    assert.match(result.body.error.message, /already used non-training Ultra Spark/);
+    assert.match(result.body.error.message, /already used the non-training tier/);
     assert.equal(forwarded.length, count);
   }
   // A training-tier session cannot switch to it either.
   await send({ model: 'ultra-spark/deepseek-v4.1-flash-1017', input: 'Hello' }, inSession('contributor-lead'));
   const refused = await exchange(JSON.stringify({ model: lead, input: 'Hello' }), inSession('contributor-lead'));
   assert.equal(refused.status, 409);
-  assert.match(refused.body.error.message, /Start a new thread to use non-training Ultra Spark/);
+  assert.match(refused.body.error.message, /Start a new thread to use the non-training tier/);
   const sides = JSON.parse(readFileSync(join(routerHome, 'session-sides.json'), 'utf8'));
   assert.equal(sides['private-lead'].side, 'private');
+});
+
+test('the deny data policy keeps a request off collecting endpoints and the training tier, with or without a session', async () => {
+  const deny = { 'x-codex-router-data-policy': 'deny' };
+  // Without a session: the deny, merged with the router's own endpoint order; the header goes nowhere.
+  const before = parsedLogEntries().length;
+  const pinned = await send({ model: 'openrouter/vendor/pinned', input: 'Hello' }, deny);
+  assert.deepEqual(pinned.body.provider, { order: ['google-vertex/us', 'google-ai-studio'], data_collection: 'deny' });
+  assert.equal(pinned.headers['x-codex-router-data-policy'], undefined);
+  assert.equal(parsedLogEntries().slice(before).find(entry => entry.event === 'request.forwarded').requestDataPolicy, 'deny');
+  const claude = await send({ model: 'openrouter/anthropic/claude-sonnet-5.5', input: 'Hello' }, deny);
+  assert.equal(claude.body.provider.data_collection, 'deny');
+  for (const model of ['openrouter/meta/muse-spark-1.3-contributor', 'ultra-spark/deepseek-v4.1-flash-1017']) {
+    const count = forwarded.length;
+    const result = await exchange(JSON.stringify({ model, input: 'Hello' }), deny);
+    assert.equal(result.status, 409, model);
+    assert.equal(result.body.error.code, 'data_policy');
+    assert.equal(forwarded.length, count);
+  }
+  // A session with no side yet becomes non-training, for its later requests too.
+  await send({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello' }, { ...deny, 'session-id': 'deny-policy' });
+  const later = await exchange(JSON.stringify({ model: 'openrouter/meta/muse-spark-1.3-contributor', input: 'Hello' }),
+    { 'session-id': 'deny-policy' });
+  assert.equal(later.status, 409);
+  assert.equal(later.body.error.code, 'provider_isolation');
+  const health = await exchange('', {}, { method: 'GET', url: '/health' });
+  assert.deepEqual(health.body.capabilities.dataPolicies, ['deny']);
+  const unknown = await exchange(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello' }),
+    { 'x-codex-router-data-policy': 'allow' });
+  assert.equal(unknown.status, 400);
+  // Without the header nothing changes.
+  const plain = await send({ model: 'openrouter/vendor/pinned', input: 'Hello' });
+  assert.deepEqual(plain.body.provider, { order: ['google-vertex/us', 'google-ai-studio'] });
 });
 
 test('a training-tier worker that carries the Ultra Spark lead history is refused before forwarding', async () => {

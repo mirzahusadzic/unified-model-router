@@ -126,6 +126,7 @@ The rule covers models on either route, and whole agent trees:
 - **Claude:** Counts on either route, `openrouter/anthropic/…` slugs included.
 - **Ultra Spark Contributor:** Counts as training-tier, because its workers run on Muse Spark 1.3 Contributor.
 - **Ultra Spark:** Counts with OpenAI and Claude, and its lead's requests stay off collecting endpoints even without a session ID.
+- **The deny data policy:** A request with `X-Codex-Router-Data-Policy: deny` counts with them too, with or without a session ID; see Routing policy.
 - **Spawned agents:** Share their parent's session, so the rule covers whole agent trees: a Muse worker spawned by a native OpenAI thread is refused.
 - **DeepSeek and other OpenRouter models:** Work with either side. After a native OpenAI or Claude model or Ultra Spark, a session's OpenRouter requests, the router's own searches included, carry `provider.data_collection: "deny"`, so they reach only endpoints that do not collect data; DeepSeek's own endpoint, which may train on prompts, is left out.
 - **No such endpoint:** Codex receives a `[router diagnostic]` instead of OpenRouter's HTTP 404: pin the model to another endpoint or start a new thread. `request.forwarded` logs `dataCollection`.
@@ -157,12 +158,13 @@ The headers a caller can send:
 | `X-Codex-Routing-Policy` | `preserve-model-v1` | Matches the default; sent by the OpenRouter-only profile. Unknown values get HTTP 400. |
 | `X-Codex-Router-Prompt-Cache` | `instructions`, `none` | Places Claude's cache breakpoint, as described under Claude's two routes. Unknown values get HTTP 400. |
 | `X-Codex-Router-Revision` | A SHA-256 from `/health` | Holds the router's revision, as described under Router capabilities. |
+| `X-Codex-Router-Data-Policy` | `deny` | Keeps the request off the training tier, which gets HTTP 409 (`data_policy`), and sends its OpenRouter requests, searches included, only to endpoints that do not collect data, in the router's endpoint order when the request has no `provider` field. A session with no side yet becomes non-training. Unknown values get HTTP 400. |
 
-A one-shot client that shares its instructions across calls sends, for example:
+A one-shot client that shares its instructions across calls, and must keep its inputs off endpoints that train, sends:
 
 ```http
-X-Codex-Routing-Policy: preserve-model-v1
 X-Codex-Router-Prompt-Cache: instructions
+X-Codex-Router-Data-Policy: deny
 ```
 
 ---
@@ -180,6 +182,7 @@ curl -s http://127.0.0.1:18766/health
 | `capabilities.routingPolicies` | Supported routing policies (`preserve-model-v1`). |
 | `capabilities.openrouterRejectionRecovery` | The bounded OpenRouter 400 recovery contract. |
 | `capabilities.providerIsolation` | The [provider isolation](#provider-isolation) rule (`session-v3`: `session-v2` added Claude to the protected side, and `session-v3` sends OpenRouter requests in protected sessions only to endpoints that do not collect data). |
+| `capabilities.dataPolicies` | Values of `X-Codex-Router-Data-Policy` (`deny`). |
 | `capabilities.promptCacheModes` | Values of `X-Codex-Router-Prompt-Cache` (`instructions`, `none`), which places Claude's cache breakpoint. |
 | `capabilities.revisionPrecondition` | Support for the `X-Codex-Router-Revision` header below. |
 | `revision` | SHA-256 over the running router's entry file and the modules beside it. |

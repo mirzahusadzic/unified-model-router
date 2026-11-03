@@ -11,9 +11,10 @@ import { anthropicApiKey, envFile, fileEnvironment, logEvent, openrouterApiKey, 
 // the training tier the same way, since Anthropic's terms bar using Claude's
 // output to train competing models; Claude and OpenAI may share a session.
 // Ultra Spark counts as training because its workers run on Muse Contributor;
-// non-training Ultra Spark (`ultra-spark-private/`) is a protected side of its
-// own, so its session never reaches the training tier or an endpoint that
-// collects data. The list can be extended, not disabled.
+// non-training Ultra Spark (`ultra-spark-private/`), and any request under the
+// deny data policy, is a protected side of its own (`private`), so its session
+// never reaches the training tier or an endpoint that collects data. The list
+// can be extended, not disabled.
 const trainingModels = new Set(['meta/muse-spark-1.3-contributor', ...String(
   process.env.CODEX_ROUTER_TRAINING_MODELS || fileEnvironment.CODEX_ROUTER_TRAINING_MODELS || '',
 ).split(',').map(model => model.trim()).filter(Boolean)]);
@@ -45,7 +46,7 @@ function loadSessionSides() {
 const sideNames = {
   openai: 'a native OpenAI model',
   anthropic: 'a Claude model',
-  private: 'non-training Ultra Spark',
+  private: 'the non-training tier',
   training: 'a model whose provider trains on its inputs',
 };
 const sessionSides = loadSessionSides();

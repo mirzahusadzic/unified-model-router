@@ -140,7 +140,7 @@ logs | jq -c 'select(.event == "router.ready")
 | To find out | Look for |
 | --- | --- |
 | What went upstream? | `request.forwarded`: route, model, attempt, payload SHA-256, byte length, input item count, routing policy |
-| Did the router change the request? | `request.forwarded`: `providerOrder`, `dataCollection`, `structuredOutputAdapted` (DeepSeek JSON mode), `promptCachingAdded` (Claude's `cache_control`), `promptCache` (a caller's `X-Codex-Router-Prompt-Cache`, else `default`), `webSearchOverride`, a reset of OpenRouter response state, and tool-history repairs |
+| Did the router change the request? | `request.forwarded`: `providerOrder`, `dataCollection`, `structuredOutputAdapted` (DeepSeek JSON mode), `promptCachingAdded` (Claude's `cache_control`), `promptCache` (a caller's `X-Codex-Router-Prompt-Cache`, else `default`), `requestDataPolicy` (a caller's `X-Codex-Router-Data-Policy`, else `default`), `webSearchOverride`, a reset of OpenRouter response state, and tool-history repairs |
 | Which tool records were repaired? | `history.repaired`: invalid, duplicate, unanswered, or orphaned tool records, and native tool declarations, before an OpenRouter request |
 | Were numbers in tool arguments rewritten? | `tool_arguments.normalized`: the tool whose whole-number floats became integers |
 | How did the request end, and how long did it take? | `request.finished`: local HTTP status (`error` level when `status >= 400`) and total duration; `request.aborted`: the client disconnected first |
@@ -210,7 +210,7 @@ logs | jq -c 'select(.event == "anthropic.refused")
 
 | To find out | Look for |
 | --- | --- |
-| Why was a request refused with HTTP 409? | `session.provider_isolation`: the recorded and requested sides; `session.forked_lead_context`: a spawned agent sent an Ultra Spark Contributor lead's tool call IDs to a training-tier model, with the model and the number of matching IDs (`forkedCallIds`) |
+| Why was a request refused with HTTP 409? | `session.provider_isolation`: the recorded and requested sides; `data_policy.refused`: a training-tier model under the deny data policy; `session.forked_lead_context`: a spawned agent sent an Ultra Spark Contributor lead's tool call IDs to a training-tier model, with the model and the number of matching IDs (`forkedCallIds`) |
 | Were session records lost? | `session.isolation_persist_failed`, `session.isolation_load_failed`: sides not saved, or not read at startup, so sessions start without one, non-training Ultra Spark sessions included (see Troubleshooting); `claude.routes_persist_failed`, `claude.routes_load_failed`: the same for Claude routes, so sessions pick their route again |
 
 ```sh
@@ -361,6 +361,7 @@ cp -p "$backup_dir/models.json" "$HOME/.codex/models.json"
 | A new model is missing from `/model` | Rerun the installer to rebuild the catalog, then restart Codex. |
 | OpenAI models are missing from `/model` | They are hidden without an active ChatGPT plan; install with `CODEX_ROUTER_NATIVE_MODELS=show` to list them anyway. |
 | Ultra Spark does not spawn workers | Select `ultra-spark-private/deepseek-v4.1-flash-1017` ("· Ultra Spark") or `ultra-spark/deepseek-v4.1-flash-1017` ("· Ultra Spark Contributor") in a new thread, and rerun the installer so the catalog carries the current policy. Small single-step tasks run without workers by design. |
+| HTTP 409 `data_policy` | The request sent `X-Codex-Router-Data-Policy: deny` with a training-tier model; choose a model outside the training tier. |
 | HTTP 409 `provider_isolation` | The session already used the other side: native OpenAI, Claude, or Ultra Spark, or the training tier, such as Muse Spark 1.3 Contributor or Ultra Spark Contributor. Start a new thread; see [Provider isolation](routing.md#provider-isolation). |
 | Muse requests fail before reaching a model | Allow endpoints that may train on inputs in your OpenRouter privacy settings, and check that OpenRouter guardrails allow the Muse provider. |
 | A thread still uses the previous provider | [Activate the unified provider](setup.md#activate-the-provider) and start a new thread. |
