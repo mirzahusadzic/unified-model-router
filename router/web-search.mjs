@@ -230,7 +230,7 @@ function formatWebSearchResults(query, results, failure) {
 
 // One search through OpenRouter's web plugin: the reply is a token or two, and
 // the results arrive as its citations, each with an excerpt of the page.
-export function runWebSearch({ query, upstreamModel, effort, dataCollection, log, register }) {
+export function runWebSearch({ query, upstreamModel, effort, dataCollection, endpoints = null, log, register }) {
   return new Promise(resolve => {
     const startedAt = Date.now();
     let settled = false;
@@ -252,8 +252,10 @@ export function runWebSearch({ query, upstreamModel, effort, dataCollection, log
       store: false,
       // The model's configured endpoint order applies, and a protected session's
       // query goes only to endpoints that do not collect data.
-      ...(providerOrders.has(upstreamModel) || dataCollection ? { provider: {
-        ...(providerOrders.has(upstreamModel) ? { order: providerOrders.get(upstreamModel) } : {}),
+      ...(endpoints || providerOrders.has(upstreamModel) || dataCollection ? { provider: {
+        // A caller's pinned endpoints cover the search too, with no fallbacks.
+        ...(endpoints ? { order: endpoints, allow_fallbacks: false }
+          : providerOrders.has(upstreamModel) ? { order: providerOrders.get(upstreamModel) } : {}),
         ...(dataCollection ? { data_collection: dataCollection } : {}),
       } } : {}),
     }));
@@ -351,7 +353,7 @@ function addUsage(total, usage) {
 // response it runs the searches, streams native web_search_call items, and,
 // when no other call is pending, continues the same response upstream with
 // the results, up to a bound.
-export function openRouterStream({ interceptSearches = false, requestBody, sendContinuation, search, log = () => {}, closed = () => false, scope = '' }) {
+export function openRouterStream({ interceptSearches = false, requestBody, sendContinuation, search, log = () => {}, closed = () => false, scope = '', source = {} }) {
   const decoder = new StringDecoder('utf8');
   const firstBuffer = { pending: '', passThrough: false };
   let searches = 0;
@@ -408,8 +410,12 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
     usage = addUsage(usage, event.response?.usage);
     const upstreamOutput = (Array.isArray(event.response?.output) ? event.response.output : []).map(wholeNumberCall);
     const calls = !interceptSearches ? [] : round.calls.length > 0 ? round.calls : upstreamOutput.filter(isWebSearchCall);
-    const finalize = output => {
+    // `upstream` is false when the router wrote the answer: the served-by report
+    // then names no endpoint and looks up no generation.
+    const finalize = (output, { upstream = true } = {}) => {
       finished = true;
+      // The served-by report follows the generation that produced the answer.
+      Object.assign(source, { generationId: event.response?.id ?? null, upstreamFinal: upstream });
       emit({ ...event, response: { ...event.response, id: firstResponseId ?? event.response?.id,
         output: [...earlierOutput, ...output], ...(usage ? { usage } : {}) } });
     };
@@ -426,13 +432,14 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
         content: [{ type: 'output_text', annotations: [], text }] };
       emit({ type: 'response.output_item.added', item: message });
       emit({ type: 'response.output_item.done', item: message });
-      finalize([...round.streamed, message]);
+      finalize([...round.streamed, message], { upstream: false });
     };
     if (calls.length === 0) {
       // Nothing to merge or rewrite: the final event passes through exactly as sent.
       const original = Array.isArray(event.response?.output) ? event.response.output : [];
       if (!round.continuation && earlierOutput.length === 0 && upstreamOutput.every((entry, index) => entry === original[index])) {
         finished = true;
+        Object.assign(source, { generationId: event.response?.id ?? null, upstreamFinal: true });
         transform.push(`${block}\n\n`);
         return;
       }
@@ -500,6 +507,7 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
     if (continued?.contextOverflow) {
       // As for any request, a context overflow fails the response so Codex compacts the thread.
       finished = true;
+      source.upstreamFinal = false;
       emit({ type: 'response.failed', response: { ...event.response, id: firstResponseId ?? event.response?.id, status: 'failed',
         output: earlierOutput, error: { code: 'context_length_exceeded', message: contextOverflowMessage }, ...(usage ? { usage } : {}) } });
       return;
@@ -509,6 +517,7 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
       : continued.failure;
     if (refused) {
       finished = true;
+      source.upstreamFinal = false;
       emit({ type: 'response.failed', response: { ...event.response, id: firstResponseId ?? event.response?.id, status: 'failed',
         output: earlierOutput, error: refused, ...(usage ? { usage } : {}) } });
       return;

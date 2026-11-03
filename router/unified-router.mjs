@@ -49,6 +49,8 @@ function validRequest(body) {
     && (body.input == null || typeof body.input === 'string' || Array.isArray(body.input))
     && (body.reasoning == null || (isObject(body.reasoning)
       && (body.reasoning.effort == null || typeof body.reasoning.effort === 'string')))
+    // OpenRouter's `provider` settings, when sent, are an object.
+    && (body.provider === undefined || isObject(body.provider))
     && (body.text == null || (isObject(body.text)
       && (body.text.format == null || (isObject(body.text.format)
         && (body.text.format.type == null || typeof body.text.format.type === 'string')))));
@@ -282,7 +284,14 @@ const server = http.createServer((request, response) => {
   // OpenRouter has recorded it; see served-by.mjs.
   const generation = request.method === 'GET' ? /^\/v1\/generations\/([^/?#]{1,200})$/.exec(request.url ?? '') : null;
   if (generation) {
-    generationReport(decodeURIComponent(generation[1])).then(report => {
+    let id;
+    try {
+      id = decodeURIComponent(generation[1]);
+    } catch {
+      sendJson(response, 400, { error: { message: 'Malformed generation ID' } });
+      return;
+    }
+    generationReport(id).then(report => {
       if (report) sendJson(response, 200, report);
       else sendJson(response, 404, { error: { message: 'This router served no such generation with the provider report in the last day' } });
     }, () => sendJson(response, 502, { error: { message: 'The generation lookup failed' } }));
@@ -741,6 +750,8 @@ const server = http.createServer((request, response) => {
           const streams = [upstreamResponse, response];
           const eventStream = status >= 200 && status < 300
             && /^text\/event-stream/i.test(upstreamResponse.headers?.['content-type'] || '');
+          // What the search step learns about the final event, for the served-by report.
+          const servedSource = {};
           if (eventStream && target.provider !== 'openai') {
             const effort = webSearch.offered ? webSearchEffort(requestedModel) : null;
             streams.splice(1, 0, openRouterStream({
@@ -750,10 +761,12 @@ const server = http.createServer((request, response) => {
               log: (level, event, fields) => logEvent(level, event, { requestId, sessionId: requestInfo.sessionId, model, ...fields }),
               closed: clientGone,
               scope: requestInfo.sessionId,
+              source: servedSource,
               search: query => runWebSearch({
                 // Searches run through OpenRouter, on its copy of a Claude model.
                 query, upstreamModel: upstreamModelFor(model, 'openrouter'), effort, register: track,
                 dataCollection: sessionProtected ? 'deny' : undefined,
+                endpoints,
                 log: (level, event, fields) => logEvent(level, event, { requestId, sessionId: requestInfo.sessionId, model, ...fields }),
               }),
             }));
@@ -777,6 +790,7 @@ const server = http.createServer((request, response) => {
               provider: { anthropic: 'Anthropic', openai: 'OpenAI' }[target.provider] ?? null,
               // One pinned endpoint with no fallbacks is the one that served.
               endpoint: target.provider === 'openrouter' && endpoints?.length === 1 ? endpoints[0] : null,
+              source: servedSource,
             }));
           }
           pipeline(...streams, error => {

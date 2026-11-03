@@ -19,7 +19,10 @@ const maxLookupBytes = 64 * 1024;
 // that, a record OpenRouter still lacks is reported as unknown.
 const keepMs = 24 * 60 * 60 * 1000;
 const pendingMs = 30 * 60 * 1000;
-const maxGenerations = 10000;
+// A full store drops its oldest generation first.
+const maxGenerations = 50000;
+// One lookup per generation at a time, and at most one every few seconds.
+const minLookupGapMs = 5000;
 // OpenRouter's Responses `id` is the generation ID.
 const generationIdPattern = /^gen-[A-Za-z0-9-]{1,128}$/;
 const finalEventPattern = /"type"\s*:\s*"response\.(?:completed|incomplete|failed)"/;
@@ -61,29 +64,38 @@ function lookupOnce(id) {
   });
 }
 
-function rememberGeneration(id) {
-  if (typeof id !== 'string' || !generationIdPattern.test(id) || generations.has(id)) return;
+// `id` is the response ID the caller sees; `generation` is the OpenRouter
+// generation that produced the final answer, which differs after a search.
+function rememberGeneration(id, generation = id) {
+  if (typeof id !== 'string' || typeof generation !== 'string' || !generationIdPattern.test(generation)
+    || generations.has(id)) return;
   const cutoff = Date.now() - keepMs;
   for (const [key, entry] of generations) {
     if (entry.at > cutoff && generations.size < maxGenerations) break;
     generations.delete(key);
   }
-  generations.set(id, { at: Date.now(), provider: null, final: false });
+  generations.set(id, { at: Date.now(), generation, provider: null, lookedUpAt: 0, inFlight: null });
 }
 
 // The answer for `GET /v1/generations/<id>`, or null for an ID this router did
 // not serve with the report in the last day. `status` is `resolved` with the
 // provider's name, `pending` while OpenRouter has no record yet, or `unknown`.
+// Only a provider's name resolves a generation; any other answer, a rate limit
+// included, leaves it pending until the half hour is up.
 export async function generationReport(id) {
   const entry = generations.get(id);
   if (!entry || Date.now() - entry.at >= keepMs) return null;
-  if (!entry.final && openrouterApiKey) {
-    const { status, name } = await lookupOnce(id);
-    if (name) Object.assign(entry, { provider: name, final: true });
-    else if (status !== null && status !== 404 && status < 500) entry.final = true;
+  const open = () => !entry.provider && Date.now() - entry.at < pendingMs;
+  if (open() && openrouterApiKey && !entry.inFlight && Date.now() - entry.lookedUpAt >= minLookupGapMs) {
+    entry.lookedUpAt = Date.now();
+    entry.inFlight = lookupOnce(entry.generation).then(({ name }) => {
+      if (name) entry.provider = name;
+    }).finally(() => {
+      entry.inFlight = null;
+    });
   }
-  if (!entry.final && Date.now() - entry.at >= pendingMs) entry.final = true;
-  const status = entry.provider ? 'resolved' : entry.final ? 'unknown' : 'pending';
+  if (entry.inFlight) await entry.inFlight;
+  const status = entry.provider ? 'resolved' : open() ? 'pending' : 'unknown';
   return { id, status, provider: entry.provider ?? 'unknown' };
 }
 
@@ -102,8 +114,11 @@ function finalEvent(block) {
 // Passes every event through as it completes, and adds to the final one
 // `response.provider`: the route's own name (Anthropic, OpenAI), or `unknown` on
 // OpenRouter, whose generation is remembered for a later lookup. A request
-// pinned to exactly one endpoint also gets `response.endpoint`, that tag.
-export function servedByStream({ provider = null, endpoint = null } = {}) {
+// pinned to exactly one endpoint also gets `response.endpoint`, that tag, when
+// an upstream produced the final event. `source`, filled in by the search
+// step, names the generation behind the final event and whether an upstream
+// produced it rather than the router.
+export function servedByStream({ provider = null, endpoint = null, source = {} } = {}) {
   const decoder = new StringDecoder('utf8');
   const buffered = { pending: '' };
   const pass = (stream, text) => {
@@ -114,10 +129,15 @@ export function servedByStream({ provider = null, endpoint = null } = {}) {
         continue;
       }
       event.response.provider = provider ?? 'unknown';
-      if (endpoint) event.response.endpoint = endpoint;
-      if (!provider) rememberGeneration(event.response.id);
-      const eventLine = block.split(/\r?\n/).find(line => line.startsWith('event:'));
-      stream.push(`${eventLine ? `${eventLine}\n` : ''}data: ${JSON.stringify(event)}\n\n`);
+      if (endpoint && source.upstreamFinal !== false) event.response.endpoint = endpoint;
+      if (!provider && source.upstreamFinal !== false) rememberGeneration(event.response.id, source.generationId ?? event.response.id);
+      // Only the data changes; the event's other lines keep their place.
+      const lines = block.split(/\r?\n/);
+      const firstData = lines.findIndex(line => line.startsWith('data:'));
+      const kept = lines.flatMap((line, index) => (index === firstData ? [`data: ${JSON.stringify(event)}`]
+        : line.startsWith('data:') ? [] : [line]));
+      const newline = block.includes('\r\n') ? '\r\n' : '\n';
+      stream.push(`${kept.join(newline)}${newline}${newline}`);
     }
   };
   return new Transform({

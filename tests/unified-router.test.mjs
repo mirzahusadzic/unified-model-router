@@ -598,6 +598,13 @@ test('X-Codex-Router-Endpoints pins OpenRouter endpoints in its order, with no f
   const conflict = await exchange(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello',
     provider: { order: ['deepseek'] } }), pin);
   assert.equal(conflict.status, 400);
+  // OpenRouter's provider settings, when sent, must be an object.
+  for (const provider of ['x', null, ['fireworks']]) {
+    const count = forwarded.length;
+    const result = await exchange(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello', provider }), pin);
+    assert.equal(result.status, 400, JSON.stringify(provider));
+    assert.equal(forwarded.length, count);
+  }
   const health = await exchange('', {}, { method: 'GET', url: '/health' });
   assert.equal(health.body.capabilities.endpointPins, true);
 });
@@ -2374,9 +2381,10 @@ const sseEventsOf = rawBody => rawBody.split(/\r?\n/).filter(line => line.starts
   .map(line => JSON.parse(line.slice('data: '.length)));
 
 test('X-Codex-Router-Report: provider marks the final event at once, and the lookup answers later', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   mockUpstreamSequence(t, [
     { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-served') },
-    { status: 404, body: JSON.stringify({ error: { message: 'Generation not found' } }) },
+    { status: 429, body: JSON.stringify({ error: { message: 'Rate limited' } }) },
     { status: 200, body: JSON.stringify({ data: { provider_name: 'Fireworks', model: 'deepseek/deepseek-v4.1-flash-20261017' } }) },
   ]);
   const count = forwarded.length;
@@ -2389,21 +2397,30 @@ test('X-Codex-Router-Report: provider marks the final event at once, and the loo
   assert.equal(events.at(-1).response.endpoint, 'fireworks');
   assert.match(result.rawBody, /"endpoint":"fireworks"[^\n]*\n\ndata: \[DONE\]\n\n$/);
   assert.equal(forwarded.length, count + 1);
-  // The router looks the generation up only when asked, with its own key.
+  // The router looks the generation up only when asked, with its own key. Two polls at once
+  // share one lookup, and a rate limit leaves the generation pending.
   const lookup = url => exchange('', {}, { method: 'GET', url });
-  assert.deepEqual((await lookup('/v1/generations/gen-1793-served')).body,
-    { id: 'gen-1793-served', status: 'pending', provider: 'unknown' });
+  const pending = { id: 'gen-1793-served', status: 'pending', provider: 'unknown' };
+  const polls = await Promise.all([lookup('/v1/generations/gen-1793-served'), lookup('/v1/generations/gen-1793-served')]);
+  assert.deepEqual(polls.map(poll => poll.body), [pending, pending]);
+  assert.equal(forwarded.length, count + 2);
   const request = forwarded.at(-1);
   assert.equal(request.method, 'GET');
   assert.equal(request.path, '/api/v1/generation?id=gen-1793-served');
   assert.equal(request.headers.authorization, 'Bearer test-openrouter-key');
+  // Within a few seconds another poll does not ask OpenRouter again.
+  assert.deepEqual((await lookup('/v1/generations/gen-1793-served')).body, pending);
+  assert.equal(forwarded.length, count + 2);
+  t.mock.timers.tick(6000);
   assert.deepEqual((await lookup('/v1/generations/gen-1793-served')).body,
     { id: 'gen-1793-served', status: 'resolved', provider: 'Fireworks' });
   // A resolved answer is kept, so it costs no further lookup.
   const lookups = forwarded.length;
+  t.mock.timers.tick(6000);
   assert.equal((await lookup('/v1/generations/gen-1793-served')).body.provider, 'Fireworks');
   assert.equal(forwarded.length, lookups);
   assert.equal((await lookup('/v1/generations/gen-1793-never')).status, 404);
+  assert.equal((await lookup('/v1/generations/%ZZ')).status, 400);
   assert.equal((await exchange('', { 'x-codex-router-token': 'wrong' }, { method: 'GET', url: '/v1/generations/gen-1793-served' })).status, 401);
   const health = await exchange('', {}, { method: 'GET', url: '/health' });
   assert.deepEqual(health.body.capabilities.reports, ['provider']);
@@ -2413,7 +2430,8 @@ test('X-Codex-Router-Report: provider marks the final event at once, and the loo
 test('the served-by report is absent unless asked for, and names Anthropic on its own route at once', async t => {
   mockUpstreamSequence(t, [
     { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-plain') },
-    { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-two-pins') },
+    { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-two-pins')
+      .replace('data: {"type":"response.completed"', 'id: 7\nevent: response.completed\ndata: {"type":"response.completed"') },
     { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
       deltas: [{ type: 'text_delta', text: 'OK' }] }]) },
   ]);
@@ -2421,8 +2439,11 @@ test('the served-by report is absent unless asked for, and names Anthropic on it
   const plain = sseEventsOf((await exchangeRaw(deepseek)).rawBody);
   assert.equal(Object.hasOwn(plain.at(-1).response, 'provider'), false);
   // With two pinned endpoints either may have served, so no endpoint is named.
-  const twoPins = sseEventsOf((await exchangeRaw(deepseek, { 'x-codex-router-report': 'provider',
-    'x-codex-router-endpoints': 'deepinfra/fp8,fireworks' })).rawBody);
+  const twoPinsRaw = (await exchangeRaw(deepseek, { 'x-codex-router-report': 'provider',
+    'x-codex-router-endpoints': 'deepinfra/fp8,fireworks' })).rawBody;
+  // The final event keeps its other lines; only its data changes.
+  assert.match(twoPinsRaw, /\nid: 7\nevent: response\.completed\ndata: \{[^\n]*"provider":"unknown"/);
+  const twoPins = sseEventsOf(twoPinsRaw);
   assert.equal(twoPins.at(-1).response.provider, 'unknown');
   assert.equal(Object.hasOwn(twoPins.at(-1).response, 'endpoint'), false);
   const count = forwarded.length;
@@ -2430,6 +2451,35 @@ test('the served-by report is absent unless asked for, and names Anthropic on it
   assert.equal(claude.at(-1).response.provider, 'Anthropic');
   assert.equal(forwarded.length, count + 1);
   assert.equal((await exchange(deepseek, { 'x-codex-router-report': 'everything' })).status, 400);
+});
+
+test('a reported search follows the answer\'s generation, pins its search, and names no endpoint on a router answer', async t => {
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: webSearchFirstResponse().replaceAll('resp_first', 'gen-first') },
+    webSearchResult(200),
+    { status: 200, contentType: 'text/event-stream', body: continuationResponse.replaceAll('resp_second', 'gen-second') },
+    { status: 200, body: JSON.stringify({ data: { provider_name: 'Fireworks' } }) },
+    { status: 200, contentType: 'text/event-stream', body: webSearchFirstResponse().replaceAll('resp_first', 'gen-third') },
+    webSearchResult(200),
+    { status: 403, body: JSON.stringify({ error: { message: 'Forbidden' } }) },
+  ]);
+  const headers = { 'x-codex-router-report': 'provider', 'x-codex-router-endpoints': 'fireworks' };
+  const result = await exchangeRaw(searchRequest(), headers);
+  const final = sseEventsOf(result.rawBody).at(-1);
+  assert.equal(final.response.id, 'gen-first');
+  assert.equal(final.response.endpoint, 'fireworks');
+  // The pin covers the router's own search too.
+  const [, search] = forwarded.slice(-3);
+  assert.deepEqual(search.body.provider, { order: ['fireworks'], allow_fallbacks: false });
+  // Codex sees the first response's id, but the answer came from the continuation's generation.
+  const report = await exchange('', {}, { method: 'GET', url: '/v1/generations/gen-first' });
+  assert.equal(report.body.provider, 'Fireworks');
+  assert.equal(forwarded.at(-1).path, '/api/v1/generation?id=gen-second');
+  // A continuation OpenRouter refuses ends in the router's own answer, which no endpoint served.
+  const refused = sseEventsOf((await exchangeRaw(searchRequest(), headers)).rawBody).at(-1);
+  assert.equal(refused.response.provider, 'unknown');
+  assert.equal(Object.hasOwn(refused.response, 'endpoint'), false);
+  assert.equal((await exchange('', {}, { method: 'GET', url: '/v1/generations/gen-third' })).status, 404);
 });
 
 test('a caller\'s cache breakpoint holds on the step after the router\'s search', async t => {
