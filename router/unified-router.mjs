@@ -8,6 +8,7 @@ import { anthropicRefusal } from './anthropic.mjs';
 import { isObject, routerRevision as sourceRevision } from './common.mjs';
 import { anthropicApiKey, envFile, host, logEvent, modelCatalogFile, openrouterApiKey, port, rejectedRequestDir, routerToken } from './config.mjs';
 import { claudeRoute, holdAnthropicRoute, protectedSession, recordClaudeRoute, sessionRefusal, sessionSide } from './sessions.mjs';
+import { generationReport, reportValues, servedByStream } from './served-by.mjs';
 import { contextOverflowMessage, openUpstream, openrouterTarget, parseUpstreamError, readUpstreamBody, routeFor, upstreamHeaders, upstreamModelFor, upstreamTrace, usageLogging, usageTap } from './upstream.mjs';
 import { openRouterStream, runWebSearch, webSearchEffort } from './web-search.mjs';
 import { adaptForUpstream, prepareOpenRouterRecovery } from './adapt.mjs';
@@ -20,6 +21,14 @@ const promptCacheModes = ['instructions', 'none'];
 // Values of X-Codex-Router-Data-Policy: `deny` keeps a request, with or without
 // a session, off the training tier and off endpoints that collect data.
 const dataPolicies = ['deny'];
+// X-Codex-Router-Endpoints: OpenRouter endpoint tags, tried in that order with
+// no fallbacks, such as `deepinfra/fp8,fireworks`.
+const maxEndpoints = 16;
+const endpointTagPattern = /^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9._-]+)*$/i;
+function parseEndpoints(value) {
+  const tags = String(value).split(',').map(tag => tag.trim());
+  return tags.length > 0 && tags.length <= maxEndpoints && tags.every(tag => endpointTagPattern.test(tag)) ? tags : null;
+}
 
 const openrouterRejectedDiagnostic = '[router diagnostic] OpenRouter rejected this step. The thread is intact; retry or start a new thread.';
 const anthropicRejectedDiagnostic = '[router diagnostic] Anthropic rejected this step. The thread is intact; retry or start a new thread.';
@@ -239,6 +248,9 @@ const server = http.createServer((request, response) => {
         revisionPrecondition: true,
         promptCacheModes,
         dataPolicies,
+        reports: reportValues,
+        generationLookup: true,
+        endpointPins: true,
       },
     });
     return;
@@ -263,6 +275,17 @@ const server = http.createServer((request, response) => {
 
   if (request.method === 'GET' && ['/models', '/v1/models'].includes(request.url)) {
     sendJson(response, 200, modelList());
+    return;
+  }
+
+  // The provider of a generation this router served with the report, once
+  // OpenRouter has recorded it; see served-by.mjs.
+  const generation = request.method === 'GET' ? /^\/v1\/generations\/([^/?#]{1,200})$/.exec(request.url ?? '') : null;
+  if (generation) {
+    generationReport(decodeURIComponent(generation[1])).then(report => {
+      if (report) sendJson(response, 200, report);
+      else sendJson(response, 404, { error: { message: 'This router served no such generation with the provider report in the last day' } });
+    }, () => sendJson(response, 502, { error: { message: 'The generation lookup failed' } }));
     return;
   }
 
@@ -327,6 +350,21 @@ const server = http.createServer((request, response) => {
       sendJson(response, 400, { error: { message: 'Unsupported data policy' } });
       return;
     }
+    const report = request.headers['x-codex-router-report'];
+    if (report !== undefined && !reportValues.includes(report)) {
+      sendJson(response, 400, { error: { message: 'Unsupported report' } });
+      return;
+    }
+    const endpointsHeader = request.headers['x-codex-router-endpoints'];
+    const endpoints = endpointsHeader === undefined ? null : parseEndpoints(endpointsHeader);
+    if (endpointsHeader !== undefined && !endpoints) {
+      sendJson(response, 400, { error: { message: 'X-Codex-Router-Endpoints must list 1 to 16 OpenRouter endpoint tags, separated by commas' } });
+      return;
+    }
+    if (endpoints && parsed.provider?.order !== undefined) {
+      sendJson(response, 400, { error: { message: 'Pin endpoints with X-Codex-Router-Endpoints or provider.order, not both' } });
+      return;
+    }
     // The router never substitutes another model, including for structured
     // output; preserve-model-v1 remains accepted for clients that send it.
     const model = requestedModel;
@@ -354,7 +392,7 @@ const server = http.createServer((request, response) => {
     const sessionProtected = protectedSession(requestInfo.sessionId) || side === 'private' || requestDataPolicy === 'deny';
     let {
       stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch,
-    } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache });
+    } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache, endpoints });
     let structuredOutputAdapted = Boolean(structuredOutputInstruction);
     parsed.model = upstreamModel;
     let body;
@@ -383,7 +421,7 @@ const server = http.createServer((request, response) => {
       parsed = JSON.parse(rawBody.toString('utf8'));
       ({
         stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch,
-      } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache }));
+      } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache, endpoints }));
       structuredOutputAdapted = Boolean(structuredOutputInstruction);
       parsed.model = upstreamModel;
       body = Buffer.from(JSON.stringify(parsed));
@@ -732,6 +770,14 @@ const server = http.createServer((request, response) => {
               usage,
               ...trace,
             })));
+          }
+          // The served-by step comes last, so it marks the final event as the client reads it.
+          if (report === 'provider' && eventStream) {
+            streams.splice(streams.length - 1, 0, servedByStream({
+              provider: { anthropic: 'Anthropic', openai: 'OpenAI' }[target.provider] ?? null,
+              // One pinned endpoint with no fallbacks is the one that served.
+              endpoint: target.provider === 'openrouter' && endpoints?.length === 1 ? endpoints[0] : null,
+            }));
           }
           pipeline(...streams, error => {
             if (error) {

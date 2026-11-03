@@ -153,7 +153,8 @@ function mockUpstreamSequence(t, responses) {
       },
       final(callback) {
         const rawBody = Buffer.concat(chunks);
-        const body = JSON.parse(rawBody.toString('utf8'));
+        // A lookup such as the served-by report's GET sends no body.
+        const body = rawBody.length > 0 ? JSON.parse(rawBody.toString('utf8')) : null;
         forwarded.push({ ...options, body, byteLength: rawBody.length });
         const spec = responses[index];
         index += 1;
@@ -576,6 +577,29 @@ test('the deny data policy keeps a request off collecting endpoints and the trai
   // Without the header nothing changes.
   const plain = await send({ model: 'openrouter/vendor/pinned', input: 'Hello' });
   assert.deepEqual(plain.body.provider, { order: ['google-vertex/us', 'google-ai-studio'] });
+});
+
+test('X-Codex-Router-Endpoints pins OpenRouter endpoints in its order, with no fallbacks', async () => {
+  const pin = { 'x-codex-router-endpoints': 'deepinfra/fp8, fireworks' };
+  const pinned = await send({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello' }, pin);
+  assert.deepEqual(pinned.body.provider, { order: ['deepinfra/fp8', 'fireworks'], allow_fallbacks: false });
+  assert.equal(pinned.headers['x-codex-router-endpoints'], undefined);
+  // It replaces the router's configured order, and the deny policy joins it.
+  const both = await send({ model: 'openrouter/vendor/pinned', input: 'Hello' }, { ...pin, 'x-codex-router-data-policy': 'deny' });
+  assert.deepEqual(both.body.provider, { order: ['deepinfra/fp8', 'fireworks'], allow_fallbacks: false, data_collection: 'deny' });
+  const tooMany = Array.from({ length: 17 }, (_, index) => `endpoint-${index}`).join(',');
+  for (const value of ['', 'fire works', 'deepinfra,,fireworks', '/fireworks', tooMany]) {
+    const count = forwarded.length;
+    const result = await exchange(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello' }),
+      { 'x-codex-router-endpoints': value });
+    assert.equal(result.status, 400, value);
+    assert.equal(forwarded.length, count);
+  }
+  const conflict = await exchange(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello',
+    provider: { order: ['deepseek'] } }), pin);
+  assert.equal(conflict.status, 400);
+  const health = await exchange('', {}, { method: 'GET', url: '/health' });
+  assert.equal(health.body.capabilities.endpointPins, true);
 });
 
 test('a training-tier worker that carries the Ultra Spark lead history is refused before forwarding', async () => {
@@ -2343,6 +2367,71 @@ test('web search on Claude\'s direct route runs through OpenRouter and continues
   assert.match(continuation.body.messages[2].content[0].content, /688 contributors/);
 });
 
+// OpenRouter ends its streams with `[DONE]` after the final event.
+const finalEventFor = id => `data: {"type":"response.output_text.delta","delta":"OK"}\n\n`
+  + `data: {"type":"response.completed","response":{"id":"${id}","status":"completed"}}\n\ndata: [DONE]\n\n`;
+const sseEventsOf = rawBody => rawBody.split(/\r?\n/).filter(line => line.startsWith('data: ') && line !== 'data: [DONE]')
+  .map(line => JSON.parse(line.slice('data: '.length)));
+
+test('X-Codex-Router-Report: provider marks the final event at once, and the lookup answers later', async t => {
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-served') },
+    { status: 404, body: JSON.stringify({ error: { message: 'Generation not found' } }) },
+    { status: 200, body: JSON.stringify({ data: { provider_name: 'Fireworks', model: 'deepseek/deepseek-v4.1-flash-20261017' } }) },
+  ]);
+  const count = forwarded.length;
+  const result = await exchangeRaw(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello', stream: true }),
+    { 'x-codex-router-report': 'provider', 'x-codex-router-endpoints': 'fireworks' });
+  const events = sseEventsOf(result.rawBody);
+  assert.equal(events[0].delta, 'OK');
+  // OpenRouter names no provider, so the stream says so without waiting; one pinned endpoint is the one that served.
+  assert.equal(events.at(-1).response.provider, 'unknown');
+  assert.equal(events.at(-1).response.endpoint, 'fireworks');
+  assert.match(result.rawBody, /"endpoint":"fireworks"[^\n]*\n\ndata: \[DONE\]\n\n$/);
+  assert.equal(forwarded.length, count + 1);
+  // The router looks the generation up only when asked, with its own key.
+  const lookup = url => exchange('', {}, { method: 'GET', url });
+  assert.deepEqual((await lookup('/v1/generations/gen-1793-served')).body,
+    { id: 'gen-1793-served', status: 'pending', provider: 'unknown' });
+  const request = forwarded.at(-1);
+  assert.equal(request.method, 'GET');
+  assert.equal(request.path, '/api/v1/generation?id=gen-1793-served');
+  assert.equal(request.headers.authorization, 'Bearer test-openrouter-key');
+  assert.deepEqual((await lookup('/v1/generations/gen-1793-served')).body,
+    { id: 'gen-1793-served', status: 'resolved', provider: 'Fireworks' });
+  // A resolved answer is kept, so it costs no further lookup.
+  const lookups = forwarded.length;
+  assert.equal((await lookup('/v1/generations/gen-1793-served')).body.provider, 'Fireworks');
+  assert.equal(forwarded.length, lookups);
+  assert.equal((await lookup('/v1/generations/gen-1793-never')).status, 404);
+  assert.equal((await exchange('', { 'x-codex-router-token': 'wrong' }, { method: 'GET', url: '/v1/generations/gen-1793-served' })).status, 401);
+  const health = await exchange('', {}, { method: 'GET', url: '/health' });
+  assert.deepEqual(health.body.capabilities.reports, ['provider']);
+  assert.equal(health.body.capabilities.generationLookup, true);
+});
+
+test('the served-by report is absent unless asked for, and names Anthropic on its own route at once', async t => {
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-plain') },
+    { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-two-pins') },
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
+      deltas: [{ type: 'text_delta', text: 'OK' }] }]) },
+  ]);
+  const deepseek = JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello', stream: true });
+  const plain = sseEventsOf((await exchangeRaw(deepseek)).rawBody);
+  assert.equal(Object.hasOwn(plain.at(-1).response, 'provider'), false);
+  // With two pinned endpoints either may have served, so no endpoint is named.
+  const twoPins = sseEventsOf((await exchangeRaw(deepseek, { 'x-codex-router-report': 'provider',
+    'x-codex-router-endpoints': 'deepinfra/fp8,fireworks' })).rawBody);
+  assert.equal(twoPins.at(-1).response.provider, 'unknown');
+  assert.equal(Object.hasOwn(twoPins.at(-1).response, 'endpoint'), false);
+  const count = forwarded.length;
+  const claude = parseSse((await exchangeRaw(claudeRequest('Hello'), { 'x-codex-router-report': 'provider' })).rawBody);
+  assert.equal(claude.at(-1).response.provider, 'Anthropic');
+  assert.equal(forwarded.length, count + 1);
+  assert.equal((await exchange(deepseek, { 'x-codex-router-report': 'everything' })).status, 400);
+});
+
 test('a caller\'s cache breakpoint holds on the step after the router\'s search', async t => {
   mockUpstreamSequence(t, [
     { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'tool_use', id: 'toolu_search', name: 'web_search', input: {} },
@@ -2485,7 +2574,7 @@ test('after a native OpenAI or Claude model, OpenRouter requests go only to endp
     /go only to endpoints that do not collect data/);
   // The router's own search, which carries a query from the session, follows the same policy.
   await exchangeRaw(searchRequest(), inClaudeSession('policy-claude'));
-  const search = forwarded.find(request => Array.isArray(request.body.plugins) && request.body.input?.[0]?.content?.[0]?.text?.startsWith('Search the web')
+  const search = forwarded.find(request => Array.isArray(request.body?.plugins) && request.body.input?.[0]?.content?.[0]?.text?.startsWith('Search the web')
     && forwarded.indexOf(request) >= forwarded.length - 3);
   assert.deepEqual(search.body.provider, { data_collection: 'deny' });
 });

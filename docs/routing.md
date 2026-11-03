@@ -159,6 +159,10 @@ The headers a caller can send:
 | `X-Codex-Router-Prompt-Cache` | `instructions`, `none` | Places Claude's cache breakpoint, as described under Claude's two routes. Unknown values get HTTP 400. |
 | `X-Codex-Router-Revision` | A SHA-256 from `/health` | Holds the router's revision, as described under Router capabilities. |
 | `X-Codex-Router-Data-Policy` | `deny` | Keeps the request off the training tier, which gets HTTP 409 (`data_policy`), and sends its OpenRouter requests, searches included, only to endpoints that do not collect data, in the router's endpoint order when the request has no `provider` field. A session with no side yet becomes non-training. Unknown values get HTTP 400. |
+| `X-Codex-Router-Endpoints` | Up to 16 OpenRouter endpoint tags, separated by commas, such as `deepinfra/fp8,fireworks` | Sends OpenRouter requests to those endpoints in that order, with no fallbacks, in place of the router's endpoint order; the router's own searches keep its order. A request that also sets `provider.order` gets HTTP 400. |
+| `X-Codex-Router-Report` | `provider` | On a streamed response, adds `provider` to the final event's response at once: `Anthropic` or `OpenAI` on those routes, and `unknown` on OpenRouter, which records the provider only some seconds after the stream ends. A request pinned to one endpoint also gets `endpoint`, its tag. |
+
+`GET /v1/generations/<id>`, with the router token, names the provider later, for the final response's `id` of a call made with the report in the last day. It answers `{"id", "status", "provider"}`: `status` is `resolved` with the provider's name, `pending` while OpenRouter has no record yet, or `unknown` after half an hour; the router asks OpenRouter only then, with its own key, and keeps only the ID, the provider and a time, in memory.
 
 A one-shot client that shares its instructions across calls, and must keep its inputs off endpoints that train, sends:
 
@@ -183,6 +187,9 @@ curl -s http://127.0.0.1:18766/health
 | `capabilities.openrouterRejectionRecovery` | The bounded OpenRouter 400 recovery contract. |
 | `capabilities.providerIsolation` | The [provider isolation](#provider-isolation) rule (`session-v3`: `session-v2` added Claude to the protected side, and `session-v3` sends OpenRouter requests in protected sessions only to endpoints that do not collect data). |
 | `capabilities.dataPolicies` | Values of `X-Codex-Router-Data-Policy` (`deny`). |
+| `capabilities.endpointPins` | Support for `X-Codex-Router-Endpoints`. |
+| `capabilities.reports` | Values of `X-Codex-Router-Report` (`provider`). |
+| `capabilities.generationLookup` | Support for `GET /v1/generations/<id>`. |
 | `capabilities.promptCacheModes` | Values of `X-Codex-Router-Prompt-Cache` (`instructions`, `none`), which places Claude's cache breakpoint. |
 | `capabilities.revisionPrecondition` | Support for the `X-Codex-Router-Revision` header below. |
 | `revision` | SHA-256 over the running router's entry file and the modules beside it. |

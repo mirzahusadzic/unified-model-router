@@ -183,7 +183,7 @@ function normalizeToolHistoryForOpenRouter(input) {
 // Shapes a request for its upstream in place and reports what changed, for the
 // forwarding log. OpenAI requests only lose other providers' reasoning, and
 // Claude's requests are translated to Messages at the wire (openUpstream).
-export function adaptForUpstream(request, provider, upstreamModel, scope, { protectedSession = false, promptCache = null } = {}) {
+export function adaptForUpstream(request, provider, upstreamModel, scope, { protectedSession = false, promptCache = null, endpoints = null } = {}) {
   const adaptation = {
     stateReset: false, providerOrder: null, toolHistoryRepairs: null, structuredOutputInstruction: null,
     promptCachingAdded: false, webSearch: { offered: false, restored: 0 },
@@ -206,8 +206,12 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, { prot
   }
   // Claude's signed thinking is readable only on Anthropic's API.
   if (Array.isArray(request.input)) request.input = request.input.filter(item => !isAnthropicThinking(item));
-  // Fallbacks stay enabled so an endpoint outage degrades to a cache miss.
-  if (providerOrders.has(upstreamModel) && request.provider === undefined) {
+  // A caller's pinned endpoints run in that order, with no fallbacks. The
+  // router's own order keeps fallbacks enabled, so an outage costs a cache miss.
+  if (endpoints) {
+    adaptation.providerOrder = endpoints;
+    request.provider = { ...request.provider, order: endpoints, allow_fallbacks: false };
+  } else if (providerOrders.has(upstreamModel) && request.provider === undefined) {
     adaptation.providerOrder = providerOrders.get(upstreamModel);
     request.provider = { order: adaptation.providerOrder };
   }
