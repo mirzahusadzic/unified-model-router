@@ -4,7 +4,7 @@ import { pipeline } from 'node:stream';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { anthropicRefusal, messagesMaxTokens } from './anthropic.mjs';
+import { anthropicMaxTokens, anthropicMaxTokensLimit, anthropicRefusal, messagesMaxTokens } from './anthropic.mjs';
 import { isObject, routerRevision as sourceRevision } from './common.mjs';
 import { anthropicApiKey, envFile, host, logEvent, modelCatalogFile, openrouterApiKey, port, rejectedRequestDir, routerToken } from './config.mjs';
 import { claudeRoute, holdAnthropicRoute, protectedSession, recordClaudeRoute, sessionRefusal, sessionSide } from './sessions.mjs';
@@ -400,7 +400,7 @@ const server = http.createServer((request, response) => {
         return;
       }
       if (!thinkingBudgetPattern.test(budgetHeader) || thinkingBudget < minThinkingBudget || thinkingBudget >= messagesMaxTokens(parsed)) {
-        sendJson(response, 400, { error: { message: `X-Codex-Router-Thinking-Budget must be a whole number of tokens from ${minThinkingBudget}, below the request's max_output_tokens (${messagesMaxTokens({})} when unset)` } });
+        sendJson(response, 400, { error: { message: `X-Codex-Router-Thinking-Budget must be a whole number of tokens from ${minThinkingBudget} to below this request's max_tokens, ${messagesMaxTokens(parsed)}: its max_output_tokens up to ${anthropicMaxTokensLimit}, or ${anthropicMaxTokens} when unset` } });
         return;
       }
     }

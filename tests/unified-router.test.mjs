@@ -2251,6 +2251,11 @@ test('X-Codex-Router-Thinking-Budget turns on Claude\'s thinking within a budget
   }
   const capped = JSON.stringify({ ...JSON.parse(budgeted), max_output_tokens: 2048 });
   assert.equal(await refused({ 'x-codex-router-thinking-budget': '2048' }, capped), 400);
+  // max_tokens stops at 128,000 whatever the caller asks, and the refusal names the bound it applied.
+  const beyond = await exchange(JSON.stringify({ ...JSON.parse(budgeted), max_output_tokens: 200000 }),
+    { 'x-codex-router-thinking-budget': '128000' });
+  assert.equal(beyond.status, 400);
+  assert.match(beyond.body.error.message, /below this request's max_tokens, 128000/);
   for (const model of ['openrouter/anthropic/claude-sonnet-5.5', 'deepseek/deepseek-v4.1-flash-1017', 'gpt-6-astra']) {
     assert.equal(await refused({ 'x-codex-router-thinking-budget': '2048' }, JSON.stringify({ model, input: 'Judge.', stream: true })), 400, model);
   }

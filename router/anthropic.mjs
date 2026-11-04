@@ -25,8 +25,8 @@ export function anthropicHeaders(apiKey, bodyLength) {
     'anthropic-beta': anthropicBeta,
   };
 }
-const anthropicMaxTokens = 64000;
-const anthropicMaxTokensLimit = 128000;
+export const anthropicMaxTokens = 64000;
+export const anthropicMaxTokensLimit = 128000;
 // Claude's thinking blocks, signatures included, ride in the reasoning item's
 // encrypted_content, which Codex stores and sends back unchanged.
 const anthropicThinkingPrefix = 'codex-router-anthropic-thinking:v1:';
