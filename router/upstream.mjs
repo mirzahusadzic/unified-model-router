@@ -114,11 +114,13 @@ export const openrouterTarget = routeFor('openrouter/');
 // Every request the router sends upstream starts here: the same options,
 // timeout, and error handling, and the body is sent at once. Callers track the
 // returned request so a client disconnect can cancel it.
-export function openUpstream({ target, headers, body, timeoutMs = upstreamTimeoutMs, onError, log = () => {}, promptCache = null }, onResponse) {
+export function openUpstream({
+  target, headers, body, timeoutMs = upstreamTimeoutMs, onError, log = () => {}, promptCache = null, thinkingBudget = null,
+}, onResponse) {
   let sent = body;
   let respond = onResponse;
   if (target.provider === 'anthropic') {
-    const translated = messagesRequest(JSON.parse(body.toString('utf8')), { promptCache });
+    const translated = messagesRequest(JSON.parse(body.toString('utf8')), { promptCache, thinkingBudget });
     sent = Buffer.from(JSON.stringify(translated.body));
     headers = { ...headers, 'content-length': String(sent.length) };
     respond = upstreamResponse => onResponse(anthropicResponse(upstreamResponse, translated.declared, log));

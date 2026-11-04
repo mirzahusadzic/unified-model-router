@@ -112,9 +112,11 @@ export function recordClaudeRoute(sessionId, route) {
 
 // The session's route while it can still be used; otherwise Anthropic's API
 // when it has a key and has not refused recently, and OpenRouter after that.
-export function claudeRoute(sessionId) {
+// Without the fallback, Anthropic's API unless the session already moved.
+export function claudeRoute(sessionId, { fallback = true } = {}) {
   const recorded = sessionId ? current(claudeRoutes.get(sessionId))?.route : undefined;
   if (recorded === 'openrouter' && openrouterApiKey) return 'openrouter';
+  if (!fallback) return 'anthropic';
   if ((anthropicApiKey && Date.now() >= anthropicUnavailableUntil) || !openrouterApiKey) return 'anthropic';
   return 'openrouter';
 }

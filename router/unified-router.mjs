@@ -4,7 +4,7 @@ import { pipeline } from 'node:stream';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { anthropicRefusal } from './anthropic.mjs';
+import { anthropicRefusal, messagesMaxTokens } from './anthropic.mjs';
 import { isObject, routerRevision as sourceRevision } from './common.mjs';
 import { anthropicApiKey, envFile, host, logEvent, modelCatalogFile, openrouterApiKey, port, rejectedRequestDir, routerToken } from './config.mjs';
 import { claudeRoute, holdAnthropicRoute, protectedSession, recordClaudeRoute, sessionRefusal, sessionSide } from './sessions.mjs';
@@ -29,11 +29,22 @@ function parseEndpoints(value) {
   const tags = String(value).split(',').map(tag => tag.trim());
   return tags.length > 0 && tags.length <= maxEndpoints && tags.every(tag => endpointTagPattern.test(tag)) ? tags : null;
 }
+// Values of X-Codex-Router-Fallback: `none` keeps a Claude request on
+// Anthropic's API; a refusal there ends it instead of moving it to OpenRouter.
+const fallbackPolicies = ['none'];
+// X-Codex-Router-Thinking-Budget: Claude thinks on every response, up to that
+// many tokens, and the request stays on Anthropic's API, as with
+// X-Codex-Router-Fallback: none. Anthropic's minimum is 1,024, and the budget
+// must stay below the request's max_tokens.
+const minThinkingBudget = 1024;
+const thinkingBudgetPattern = /^[1-9][0-9]{3,5}$/;
 
 const openrouterRejectedDiagnostic = '[router diagnostic] OpenRouter rejected this step. The thread is intact; retry or start a new thread.';
 const anthropicRejectedDiagnostic = '[router diagnostic] Anthropic rejected this step. The thread is intact; retry or start a new thread.';
 const openrouterRefusedDiagnostic = status => `[router diagnostic] OpenRouter refused this request (HTTP ${status}). Check OPENROUTER_API_KEY, your OpenRouter credits, and your OpenRouter settings for this model.`;
 const openrouterDataPolicyDiagnostic = '[router diagnostic] This session used a native OpenAI or Claude model or non-training Ultra Spark, or this request asked for the deny data policy, so its OpenRouter requests go only to endpoints that do not collect data, and your OpenRouter settings allow none for this model. Pin it to such an endpoint (CODEX_ROUTER_PROVIDER_ORDER and your OpenRouter guardrails), or start a new thread.';
+const anthropicRefusedError = reason => ({ code: 'anthropic_refused', reason,
+  message: `Anthropic's API refused this request (${reason}), and X-Codex-Router-Fallback: none keeps it off OpenRouter. Check ANTHROPIC_API_KEY and its organization's credits and limits.` });
 const anthropicRefusedDiagnostic = reason => `[router diagnostic] Anthropic's API refused this request (${reason}), and no OpenRouter key is configured to fall back to. Check ANTHROPIC_API_KEY and its organization's credits and limits.`;
 
 function isAuthenticated(headers) {
@@ -253,6 +264,8 @@ const server = http.createServer((request, response) => {
         reports: reportValues,
         generationLookup: true,
         endpointPins: true,
+        fallbackPolicies,
+        thinkingBudgets: true,
       },
     });
     return;
@@ -374,11 +387,40 @@ const server = http.createServer((request, response) => {
       sendJson(response, 400, { error: { message: 'Pin endpoints with X-Codex-Router-Endpoints or provider.order, not both' } });
       return;
     }
+    const fallbackPolicy = request.headers['x-codex-router-fallback'];
+    if (fallbackPolicy !== undefined && !fallbackPolicies.includes(fallbackPolicy)) {
+      sendJson(response, 400, { error: { message: 'Unsupported fallback policy' } });
+      return;
+    }
+    const budgetHeader = request.headers['x-codex-router-thinking-budget'];
+    const thinkingBudget = budgetHeader === undefined ? null : Number(budgetHeader);
+    if (budgetHeader !== undefined) {
+      if (routeFor(requestedModel).provider !== 'anthropic') {
+        sendJson(response, 400, { error: { message: 'X-Codex-Router-Thinking-Budget applies only to anthropic/ models on Anthropic\'s API' } });
+        return;
+      }
+      if (!thinkingBudgetPattern.test(budgetHeader) || thinkingBudget < minThinkingBudget || thinkingBudget >= messagesMaxTokens(parsed)) {
+        sendJson(response, 400, { error: { message: `X-Codex-Router-Thinking-Budget must be a whole number of tokens from ${minThinkingBudget}, below the request's max_output_tokens (${messagesMaxTokens({})} when unset)` } });
+        return;
+      }
+    }
+    // A declared thinking budget cannot be expressed on OpenRouter, so it never falls back either.
+    const claudeFallback = fallbackPolicy !== 'none' && thinkingBudget === null;
     // The router never substitutes another model, including for structured
     // output; preserve-model-v1 remains accepted for clients that send it.
     const model = requestedModel;
     let target = routeFor(model);
-    if (target.provider === 'anthropic' && claudeRoute(requestInfo.sessionId) === 'openrouter') target = openrouterTarget;
+    if (target.provider === 'anthropic' && claudeRoute(requestInfo.sessionId, { fallback: claudeFallback }) === 'openrouter') {
+      if (!claudeFallback) {
+        sendJson(response, 409, { error: { code: 'route', message: 'This session moved to OpenRouter after Anthropic\'s API refused it, and this request asks to stay on Anthropic\'s API. Start a new session.' } });
+        return;
+      }
+      target = openrouterTarget;
+    }
+    if (target.provider === 'anthropic' && !claudeFallback && !anthropicApiKey) {
+      sendJson(response, 502, { error: anthropicRefusedError('no_api_key') });
+      return;
+    }
 
     let upstreamModel = upstreamModelFor(model, target.provider);
     // A request under the deny data policy counts as the non-training side when
@@ -494,8 +536,12 @@ const server = http.createServer((request, response) => {
       if (reason) {
         holdAnthropicRoute();
         logEvent('error', 'anthropic.refused', {
-          requestId, sessionId: requestInfo.sessionId, model, status, reason, continuation: true, fallback: Boolean(openrouterApiKey),
+          requestId, sessionId: requestInfo.sessionId, model, status, reason, continuation: true, fallback: claudeFallback && Boolean(openrouterApiKey),
         });
+        if (!claudeFallback) {
+          const { code, message } = anthropicRefusedError(reason);
+          return { failure: { code, message } };
+        }
         if (!openrouterApiKey) return { diagnostic: anthropicRefusedDiagnostic(reason) };
         recordClaudeRoute(requestInfo.sessionId, 'openrouter');
         return { failure: { code: 'server_error', message: `Anthropic's API refused the request (${reason}); the thread continues on OpenRouter.` } };
@@ -524,7 +570,7 @@ const server = http.createServer((request, response) => {
         return;
       }
       const continuation = openUpstream({
-        target, headers, body: continuationRequestBody, onError: () => resolve(null), log: anthropicLog, promptCache,
+        target, headers, body: continuationRequestBody, onError: () => resolve(null), log: anthropicLog, promptCache, thinkingBudget,
       }, continuationResponse => {
         const status = continuationResponse.statusCode || null;
         logEvent(status >= 200 && status < 300 ? 'info' : 'error', 'web_search.continuation', {
@@ -569,6 +615,8 @@ const server = http.createServer((request, response) => {
         promptCachingAdded,
         promptCache: promptCache || 'default',
         requestDataPolicy: requestDataPolicy || 'default',
+        fallback: claudeFallback ? 'default' : 'none',
+        thinkingBudget,
         webSearchOverride: webSearch.offered || webSearch.restored > 0 ? { offered: webSearch.offered, restored: webSearch.restored } : null,
         providerOrder,
         dataCollection: parsed.provider?.data_collection ?? null,
@@ -588,7 +636,9 @@ const server = http.createServer((request, response) => {
 
       let upstream;
       try {
-        upstream = openUpstream({ target, headers, body: requestBody, onError: upstreamError, log: anthropicLog, promptCache }, upstreamResponse => {
+        upstream = openUpstream({
+          target, headers, body: requestBody, onError: upstreamError, log: anthropicLog, promptCache, thinkingBudget,
+        }, upstreamResponse => {
           if (response.destroyed) {
             upstreamResponse.destroy();
             return;
@@ -637,9 +687,13 @@ const server = http.createServer((request, response) => {
                 holdAnthropicRoute();
                 logEvent('error', 'anthropic.refused', {
                   requestId, sessionId: requestInfo.sessionId, model, status, reason: refusalReason, attempt,
-                  fallback: Boolean(openrouterApiKey), ...trace,
+                  fallback: claudeFallback && Boolean(openrouterApiKey), ...trace,
                 });
                 if (clientClosed || response.destroyed) return;
+                if (!claudeFallback) {
+                  sendJson(response, 502, { error: anthropicRefusedError(refusalReason) });
+                  return;
+                }
                 if (!openrouterApiKey) {
                   sendResponsesDiagnostic(response, requestId, anthropicRefusedDiagnostic(refusalReason), 'anthropic-request-refused');
                   return;

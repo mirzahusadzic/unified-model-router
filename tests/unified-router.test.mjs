@@ -2228,6 +2228,39 @@ test('a caller can put Claude\'s cache breakpoint at the end of its instructions
   assert.equal(forwarded.length, count);
 });
 
+test('X-Codex-Router-Thinking-Budget turns on Claude\'s thinking within a budget on Anthropic\'s API, in place of adaptive thinking and effort', async t => {
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
+      deltas: [{ type: 'text_delta', text: 'OK' }] }]) },
+  ]);
+  const format = { type: 'json_schema', name: 'verdict', schema: { type: 'object', properties: { ok: { type: 'boolean' } } } };
+  const budgeted = JSON.stringify({ model: 'anthropic/claude-sonnet-4-6', stream: true, input: 'Judge.', reasoning: { effort: 'medium' },
+    text: { format } });
+  const result = await exchangeRaw(budgeted, { 'x-codex-router-thinking-budget': '2048' });
+  assert.equal(result.status, 200);
+  const sent = forwarded.at(-1);
+  assert.equal(sent.hostname, 'api.anthropic.com');
+  // Only the type and the budget: Anthropic rejects other fields beside a budget on some models.
+  assert.deepEqual(sent.body.thinking, { type: 'enabled', budget_tokens: 2048 });
+  assert.deepEqual(sent.body.output_config, { format: { type: 'json_schema', schema: format.schema } });
+  // Malformed budgets, budgets at or above max_tokens, and models off Anthropic's API never leave the router.
+  const count = forwarded.length;
+  const refused = async (headers, body = budgeted) => (await exchange(body, headers)).status;
+  for (const value of ['1023', '2048.5', ' 2048', '0x800', '64000', '1000000']) {
+    assert.equal(await refused({ 'x-codex-router-thinking-budget': value }), 400, value);
+  }
+  const capped = JSON.stringify({ ...JSON.parse(budgeted), max_output_tokens: 2048 });
+  assert.equal(await refused({ 'x-codex-router-thinking-budget': '2048' }, capped), 400);
+  for (const model of ['openrouter/anthropic/claude-sonnet-5.5', 'deepseek/deepseek-v4.1-flash-1017', 'gpt-6-astra']) {
+    assert.equal(await refused({ 'x-codex-router-thinking-budget': '2048' }, JSON.stringify({ model, input: 'Judge.', stream: true })), 400, model);
+  }
+  assert.equal(await refused({ 'x-codex-router-fallback': 'openrouter' }), 400);
+  assert.equal(forwarded.length, count);
+  const health = await exchange('', {}, { method: 'GET', url: '/health' });
+  assert.deepEqual(health.body.capabilities.fallbackPolicies, ['none']);
+  assert.equal(health.body.capabilities.thinkingBudgets, true);
+});
+
 test('a step\'s tool output ends Claude\'s turn, so the next request extends the same prefix', async () => {
   const first = [{ role: 'user', content: 'List files.' }, claudeThinking('List.', 'sig-c'),
     { type: 'function_call', call_id: 'toolu_one', name: 'exec_command', arguments: '{"cmd":"ls"}' },
@@ -2842,4 +2875,66 @@ test('a caller\'s cache breakpoint choice holds when a refusal moves the request
   assert.deepEqual(refused.body.system.at(-1).cache_control, { type: 'ephemeral' });
   assert.equal(fallback.hostname, 'openrouter.ai');
   assert.equal(fallback.body.cache_control, undefined);
+});
+
+test('X-Codex-Router-Fallback: none keeps a Claude request on Anthropic\'s API: a refusal ends it, and the hour\'s hold does not move it', async t => {
+  // The tests before this one held new sessions on OpenRouter for an hour.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 6 * 60 * 60 * 1000 });
+  const credits = { status: 400, body: JSON.stringify({ type: 'error', error: { type: 'invalid_request_error',
+    message: 'Your credit balance is too low to access the Anthropic API.' } }) };
+  const answered = () => ({ status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
+    deltas: [{ type: 'text_delta', text: 'OK' }] }]) });
+  mockUpstreamSequence(t, [
+    credits,
+    answered(),
+    { status: 200, body: JSON.stringify({ id: 'resp_codex', output: [] }) },
+    credits,
+  ]);
+  const pinned = { 'x-codex-router-fallback': 'none' };
+  const before = parsedLogEntries().length;
+  const count = forwarded.length;
+  const refused = await exchange(claudeRequest('Judge.'), { ...inClaudeSession('pinned-refused'), ...pinned });
+  assert.equal(refused.status, 502);
+  assert.equal(refused.body.error.code, 'anthropic_refused');
+  assert.equal(refused.body.error.reason, 'billing');
+  assert.equal(forwarded.length, count + 1);
+  assert.equal(forwarded.at(-1).hostname, 'api.anthropic.com');
+  assert.equal(parsedLogEntries().slice(before).find(entry => entry.event === 'anthropic.refused').fallback, false);
+  assert.equal(JSON.parse(readFileSync(join(routerHome, 'claude-routes.json'), 'utf8'))['pinned-refused'].route, 'anthropic');
+  // The refusal holds new sessions on OpenRouter for an hour, but not a request that asks to stay.
+  const stayed = await exchangeRaw(claudeRequest('Judge.'), { ...pinned, 'x-codex-router-report': 'provider' });
+  assert.equal(forwarded.at(-1).hostname, 'api.anthropic.com');
+  assert.equal(parseSse(stayed.rawBody).at(-1).response.route, 'anthropic');
+  // Codex, which sends no such header, keeps its fallback.
+  await exchange(claudeRequest('Hello'), inClaudeSession('codex-held'));
+  assert.equal(forwarded.at(-1).hostname, 'openrouter.ai');
+  // A session already on OpenRouter cannot be pinned back, and nothing is sent.
+  const moved = forwarded.length;
+  const conflict = await exchange(claudeRequest('Hello'), { ...inClaudeSession('codex-held'), ...pinned });
+  assert.equal(conflict.status, 409);
+  assert.equal(conflict.body.error.code, 'route');
+  assert.equal(forwarded.length, moved);
+  // A thinking budget, which OpenRouter cannot express, never falls back either.
+  const budgeted = await exchange(JSON.stringify({ model: 'anthropic/claude-sonnet-4-6', stream: true, input: 'Judge.' }),
+    { 'x-codex-router-thinking-budget': '2048' });
+  assert.equal(budgeted.status, 502);
+  assert.equal(budgeted.body.error.code, 'anthropic_refused');
+  assert.equal(forwarded.length, moved + 1);
+});
+
+test('with X-Codex-Router-Fallback: none, a refusal on the step after a search fails the response and leaves the thread on Anthropic\'s API', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 8 * 60 * 60 * 1000 });
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'tool_use', id: 'toolu_find', name: 'web_search', input: {} },
+      deltas: [{ type: 'input_json_delta', partial_json: '{"query":"openai codex contributors"}' }] }], { stopReason: 'tool_use' }) },
+    webSearchResult(200),
+    { status: 401, body: JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }) },
+  ]);
+  const result = await exchangeRaw(claudeRequest('How many contributors?', { tools: [{ type: 'web_search' }] }),
+    { ...inClaudeSession('pinned-continuation'), 'x-codex-router-fallback': 'none' });
+  const final = parseSse(result.rawBody).at(-1);
+  assert.equal(final.type, 'response.failed');
+  assert.equal(final.response.error.code, 'anthropic_refused');
+  assert.doesNotMatch(final.response.error.message, /continues on OpenRouter/);
+  assert.equal(JSON.parse(readFileSync(join(routerHome, 'claude-routes.json'), 'utf8'))['pinned-continuation'].route, 'anthropic');
 });

@@ -259,28 +259,36 @@ export function hasSystemPrompt(request) {
   return false;
 }
 
+// The Messages request's max_tokens: the caller's max_output_tokens up to the
+// limit, or the default.
+export function messagesMaxTokens(request) {
+  return Number.isInteger(request.max_output_tokens) && request.max_output_tokens > 0
+    ? Math.min(request.max_output_tokens, anthropicMaxTokensLimit) : anthropicMaxTokens;
+}
+
 // promptCache is the caller's X-Codex-Router-Prompt-Cache: "instructions" puts
 // the only breakpoint at the end of the system prompt, for one-shot callers whose
-// prompts share it; "none" sets no breakpoint. Codex sends neither.
-export function messagesRequest(request, { promptCache = null } = {}) {
+// prompts share it; "none" sets no breakpoint. thinkingBudget is the caller's
+// X-Codex-Router-Thinking-Budget: thinking on every response, up to that many
+// tokens, in place of adaptive thinking and effort, for the models that still
+// accept it. Codex sends neither.
+export function messagesRequest(request, { promptCache = null, thinkingBudget = null } = {}) {
   const { declared, definitions } = claudeTools(request.tools);
   const { system, messages } = claudeMessages(request);
   if (promptCache === 'instructions' && system.length > 0) {
     system[system.length - 1] = { ...system.at(-1), cache_control: { type: 'ephemeral' } };
   }
-  const effort = request.reasoning?.effort;
+  const effort = thinkingBudget ? undefined : request.reasoning?.effort;
   const outputConfig = {
     ...(claudeEfforts.has(effort) ? { effort } : ['none', 'minimal'].includes(effort) ? { effort: 'low' } : {}),
     ...(request.text?.format?.type === 'json_schema' && isObject(request.text.format.schema)
       ? { format: { type: 'json_schema', schema: request.text.format.schema } } : {}),
   };
-  const maxTokens = Number.isInteger(request.max_output_tokens) && request.max_output_tokens > 0
-    ? Math.min(request.max_output_tokens, anthropicMaxTokensLimit) : anthropicMaxTokens;
   return {
     declared,
     body: {
       model: request.model,
-      max_tokens: maxTokens,
+      max_tokens: messagesMaxTokens(request),
       stream: true,
       ...(system.length > 0 ? { system } : {}),
       messages,
@@ -290,7 +298,7 @@ export function messagesRequest(request, { promptCache = null } = {}) {
         tool_choice: request.tool_choice === 'none' ? { type: 'none' }
           : { type: 'auto', ...(request.parallel_tool_calls === false ? { disable_parallel_tool_use: true } : {}) },
       } : {}),
-      thinking: {
+      thinking: thinkingBudget ? { type: 'enabled', budget_tokens: thinkingBudget } : {
         type: 'adaptive',
         display: request.reasoning?.summary === 'none' ? 'omitted' : 'summarized',
         block_binding: { prefix_mismatch_behavior: 'drop_block' },
