@@ -303,7 +303,8 @@ export function messagesRequest(request, { promptCache = null } = {}) {
 }
 
 // Codex reads cache reads and writes from input_tokens_details; Anthropic's
-// input_tokens count only what was neither.
+// input_tokens count only what was neither. Claude's thinking tokens, part of
+// its output tokens, become the Responses reasoning_tokens when reported.
 function responsesUsage(usage) {
   const count = name => (typeof usage[name] === 'number' && Number.isFinite(usage[name]) ? usage[name] : 0);
   const cached = count('cache_read_input_tokens');
@@ -314,6 +315,8 @@ function responsesUsage(usage) {
     input_tokens: input,
     input_tokens_details: { cached_tokens: cached, cache_write_tokens: written },
     output_tokens: output,
+    ...(typeof usage.thinking_tokens === 'number' && Number.isFinite(usage.thinking_tokens)
+      ? { output_tokens_details: { reasoning_tokens: usage.thinking_tokens } } : {}),
     total_tokens: input + output,
   };
 }
@@ -355,6 +358,8 @@ function anthropicResponseStream({ declared, log }) {
   const addUsage = value => {
     if (!isObject(value)) return;
     for (const [name, count] of Object.entries(value)) if (typeof count === 'number') usage[name] = count;
+    // Only the final message_delta reports them.
+    if (typeof value.output_tokens_details?.thinking_tokens === 'number') usage.thinking_tokens = value.output_tokens_details.thinking_tokens;
   };
 
   const start = (index, block) => {

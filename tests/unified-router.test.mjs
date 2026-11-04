@@ -2105,14 +2105,14 @@ test('whole-number floats in OpenRouter tool arguments reach Codex as integers, 
 const anthropicSse = events => events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('');
 const claudeThinking = (thinking, signature) => ({ type: 'reasoning', id: `rs_${signature}`, summary: [{ type: 'summary_text', text: thinking }],
   encrypted_content: `codex-router-anthropic-thinking:v1:${Buffer.from(JSON.stringify({ type: 'thinking', thinking, signature })).toString('base64url')}` });
-const claudeStream = (blocks, { stopReason = 'end_turn', stopDetails, usage = {} } = {}) => anthropicSse([
+const claudeStream = (blocks, { stopReason = 'end_turn', stopDetails, usage = {}, finalUsage = {} } = {}) => anthropicSse([
   { type: 'message_start', message: { id: 'msg_claude', model: 'claude-sonnet-5-5', usage: { input_tokens: 10, cache_read_input_tokens: 100,
     cache_creation_input_tokens: 20, output_tokens: 1, ...usage } } },
   ...blocks.flatMap((block, index) => [
     { type: 'content_block_start', index, content_block: block.start },
     ...(block.deltas ?? []).map(delta => ({ type: 'content_block_delta', index, delta })),
     { type: 'content_block_stop', index }]),
-  { type: 'message_delta', delta: { stop_reason: stopReason, ...(stopDetails ? { stop_details: stopDetails } : {}) }, usage: { output_tokens: 30 } },
+  { type: 'message_delta', delta: { stop_reason: stopReason, ...(stopDetails ? { stop_details: stopDetails } : {}) }, usage: { output_tokens: 30, ...finalUsage } },
   { type: 'message_stop' },
 ]);
 const claudeRequest = (input, extra = {}) => JSON.stringify({ model: 'anthropic/claude-sonnet-5-5', stream: true, input,
@@ -2451,6 +2451,28 @@ test('the served-by report is absent unless asked for, and names Anthropic on it
   assert.equal(claude.at(-1).response.provider, 'Anthropic');
   assert.equal(forwarded.length, count + 1);
   assert.equal((await exchange(deepseek, { 'x-codex-router-report': 'everything' })).status, 400);
+});
+
+test('Claude\'s thinking tokens reach the caller as reasoning_tokens, and the report names the route that served', async t => {
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
+      deltas: [{ type: 'text_delta', text: 'OK' }] }], { finalUsage: { output_tokens_details: { thinking_tokens: 12 } } }) },
+    { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-route') },
+    { status: 200, contentType: 'text/event-stream', body: finalEventFor('resp_native_route') },
+  ]);
+  const claude = parseSse((await exchangeRaw(claudeRequest('Hello'), { 'x-codex-router-report': 'provider' })).rawBody).at(-1);
+  assert.deepEqual(claude.response.usage, { input_tokens: 130, input_tokens_details: { cached_tokens: 100, cache_write_tokens: 20 },
+    output_tokens: 30, output_tokens_details: { reasoning_tokens: 12 }, total_tokens: 160 });
+  assert.equal(claude.response.provider, 'Anthropic');
+  assert.equal(claude.response.route, 'anthropic');
+  const deepseek = sseEventsOf((await exchangeRaw(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello', stream: true }),
+    { 'x-codex-router-report': 'provider' })).rawBody).at(-1);
+  assert.equal(deepseek.response.provider, 'unknown');
+  assert.equal(deepseek.response.route, 'openrouter');
+  const native = sseEventsOf((await exchangeRaw(JSON.stringify({ model: 'gpt-6-astra', input: 'Hello', stream: true }),
+    { 'x-codex-router-report': 'provider' })).rawBody).at(-1);
+  assert.equal(native.response.provider, 'OpenAI');
+  assert.equal(native.response.route, 'openai');
 });
 
 test('a reported search follows the answer\'s generation, pins its search, and names no endpoint on a router answer', async t => {

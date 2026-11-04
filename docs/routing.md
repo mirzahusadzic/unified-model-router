@@ -90,6 +90,7 @@ The translation keeps each request a prefix of the next, which keeps Claude's ca
 - **Tool choice:** The entries declare parallel tool calls. Claude 5.5 models reject a forced tool choice, so `required` asks without forcing.
 - **Web search:** Not offered without an OpenRouter key; see [Web search](#web-search).
 - **Rejected steps:** A request over the context window ends with `context_length_exceeded`, so Codex compacts; another 400 gets one retry without Claude's thinking, then a `[router diagnostic]`.
+- **Usage:** Claude's thinking tokens, part of `output_tokens`, arrive as `output_tokens_details.reasoning_tokens` when Anthropic reports them.
 
 ---
 
@@ -160,7 +161,7 @@ The headers a caller can send:
 | `X-Codex-Router-Revision` | A SHA-256 from `/health` | Holds the router's revision, as described under Router capabilities. |
 | `X-Codex-Router-Data-Policy` | `deny` | Keeps the request off the training tier, which gets HTTP 409 (`data_policy`), and sends its OpenRouter requests, searches included, only to endpoints that do not collect data, in the router's endpoint order when the request has no `provider` field. A session with no side yet becomes non-training. Unknown values get HTTP 400. |
 | `X-Codex-Router-Endpoints` | Up to 16 OpenRouter endpoint tags, separated by commas, such as `deepinfra/fp8,fireworks` | Sends OpenRouter requests to those endpoints in that order, with no fallbacks, in place of the router's endpoint order, the router's own searches included. A request that also sets `provider.order` gets HTTP 400. |
-| `X-Codex-Router-Report` | `provider` | On a streamed response, adds `provider` to the final event's response at once: `Anthropic` or `OpenAI` on those routes, and `unknown` on OpenRouter, which records the provider only some seconds after the stream ends. A request pinned to one endpoint also gets `endpoint`, its tag, when an upstream produced the final event. Answers the router writes itself, such as a `[router diagnostic]`, carry no `provider`. |
+| `X-Codex-Router-Report` | `provider` | On a streamed response, adds `provider` to the final event's response at once: `Anthropic` or `OpenAI` on those routes, and `unknown` on OpenRouter, which records the provider only some seconds after the stream ends. Beside it, `route` names the upstream the request went to: `anthropic`, `openrouter` or `openai`. A request pinned to one endpoint also gets `endpoint`, its tag, when an upstream produced the final event. Answers the router writes itself, such as a `[router diagnostic]`, carry no `provider`. |
 
 `GET /v1/generations/<id>`, with the router token, names the provider later, for the final response's `id` of a call made with the report in the last day. It answers `{"id", "status", "provider"}`: `status` is `resolved` with the provider's name, `pending` while OpenRouter has no record yet, or `unknown` after half an hour, and 404 for a generation the router no longer holds. The router asks OpenRouter only then, with its own key, at most once every few seconds per generation, and keeps only the ID, the provider and a time, in memory: the last 50,000 generations, for a day.
 

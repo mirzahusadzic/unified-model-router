@@ -788,6 +788,7 @@ const server = http.createServer((request, response) => {
           if (report === 'provider' && eventStream) {
             streams.splice(streams.length - 1, 0, servedByStream({
               provider: { anthropic: 'Anthropic', openai: 'OpenAI' }[target.provider] ?? null,
+              route: target.provider,
               // One pinned endpoint with no fallbacks is the one that served.
               endpoint: target.provider === 'openrouter' && endpoints?.length === 1 ? endpoints[0] : null,
               source: servedSource,
