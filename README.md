@@ -8,7 +8,7 @@
 
 A loopback-only Responses API router: local programs get one endpoint for OpenAI, DeepSeek, Claude, Muse Spark and other OpenRouter models, with each session's history and privacy boundaries kept across model switches. Codex is its first client: the installer sets Codex up to switch models from its own picker within one thread, and Codex's requests are what the tests replay.
 
-- **Claude on Anthropic's API:** With `ANTHROPIC_API_KEY`, Claude runs on the Messages API with prompt caching and signed thinking, and moves to OpenRouter if the key, credits or spend limit fail; without the key it runs on OpenRouter.
+- **Claude on Anthropic's API:** With `ANTHROPIC_API_KEY`, Claude runs on the Messages API with prompt caching and signed thinking, and moves to OpenRouter if the key, credits or spend limit fail, unless the caller keeps it on Anthropic's API with `X-Codex-Router-Fallback: none` ([details](docs/routing.md#routing-policy)); without the key it runs on OpenRouter.
 - **Agent orchestration:** Ultra Spark lets DeepSeek coordinate up to 10 Muse Spark workers with `fork_context: false`, on endpoints that do not train, or on Meta's cheaper training tier as Ultra Spark Contributor.
 - **Privacy boundaries:** Training-tier sessions cannot mix with native OpenAI, Claude, or non-training Ultra Spark sessions, and after any of them a session reaches only OpenRouter endpoints that keep no data.
 - **Provider compatibility:** Repairs reasoning and tool history, handles DeepSeek JSON-mode structured output, normalizes problematic tool arguments, and never silently substitutes models.
@@ -149,7 +149,7 @@ node install.mjs --verify
 | Anthropic (optional) | Claude on Anthropic's API first; a thread keeps the route it started on ([which key when](docs/routing.md#claudes-two-routes)) |
 | ChatGPT login | Native OpenAI models |
 
-To add the Anthropic key, create an API key at [platform.claude.com](https://platform.claude.com/), put `ANTHROPIC_API_KEY=<the key>` in `~/.codex/unified-router/openrouter.env`, which the installer keeps, and rerun `node install.mjs`.
+To add the Anthropic key, create an API key at [platform.claude.com](https://platform.claude.com/), put `ANTHROPIC_API_KEY=<the key>` in `~/.codex/unified-router/openrouter.env`, which the installer keeps, and rerun `node install.mjs`. Despite its name, the file holds every provider's key, and the router sends each key only to its own provider.
 
 `install.mjs` runs the installer for your platform from [`platform/`](platform/README.md). Common variations:
 

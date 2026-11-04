@@ -229,7 +229,7 @@ The router binds only to `127.0.0.1`, and Codex's ChatGPT credentials never leav
 
 The keys and the token stay in private files:
 
-- **Storage:** The OpenRouter key, the optional Anthropic key, and the local token live in `unified-router/openrouter.env` under your Codex home, outside this repository.
+- **Storage:** The OpenRouter key, the optional Anthropic key, and the local token live in `unified-router/openrouter.env` under your Codex home, outside this repository. The name predates the Anthropic route and stays for existing installs; each key goes only to its own provider's host.
 - **Unix:** Credential-bearing files, the OpenRouter-only profile included, get mode `600` in a private router directory.
 - **Windows:** The installer replaces inherited and explicit access rules with a current-user-only list before writing or reusing credentials.
 - **Backups:** Backups and temporary installation directories are private too.
