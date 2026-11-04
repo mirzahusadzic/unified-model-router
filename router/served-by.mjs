@@ -130,7 +130,8 @@ export function servedByStream({ provider = null, route = null, endpoint = null,
         stream.push(`${block}\n\n`);
         continue;
       }
-      event.response.provider = provider ?? 'unknown';
+      // A final event the router wrote, such as after a refused search step, names no provider.
+      event.response.provider = source.upstreamFinal === false ? 'unknown' : provider ?? 'unknown';
       if (route) event.response.route = route;
       if (endpoint && source.upstreamFinal !== false) event.response.endpoint = endpoint;
       if (!provider && source.upstreamFinal !== false) rememberGeneration(event.response.id, source.generationId ?? event.response.id);

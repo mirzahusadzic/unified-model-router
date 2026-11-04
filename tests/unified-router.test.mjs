@@ -2931,10 +2931,13 @@ test('with X-Codex-Router-Fallback: none, a refusal on the step after a search f
     { status: 401, body: JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }) },
   ]);
   const result = await exchangeRaw(claudeRequest('How many contributors?', { tools: [{ type: 'web_search' }] }),
-    { ...inClaudeSession('pinned-continuation'), 'x-codex-router-fallback': 'none' });
+    { ...inClaudeSession('pinned-continuation'), 'x-codex-router-fallback': 'none', 'x-codex-router-report': 'provider' });
   const final = parseSse(result.rawBody).at(-1);
   assert.equal(final.type, 'response.failed');
   assert.equal(final.response.error.code, 'anthropic_refused');
+  // The router wrote this final event, so it names the route but no provider.
+  assert.equal(final.response.provider, 'unknown');
+  assert.equal(final.response.route, 'anthropic');
   assert.doesNotMatch(final.response.error.message, /continues on OpenRouter/);
   assert.equal(JSON.parse(readFileSync(join(routerHome, 'claude-routes.json'), 'utf8'))['pinned-continuation'].route, 'anthropic');
 });
