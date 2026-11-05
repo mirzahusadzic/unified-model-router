@@ -112,7 +112,7 @@ How a search runs, from the call to later turns:
 
 ### Provider isolation
 
-Native OpenAI models, Claude models, and Ultra Spark never share a tracked Codex session with models whose provider trains on their inputs; they may share one with each other. Anthropic's terms bar using Claude's output to train competing models, so Claude is kept from the training tier as OpenAI is. Once a tracked session uses one side, the router refuses the other:
+Native OpenAI models, Claude models, and Ultra Spark never share a tracked Codex session with the training tier, a list the router declares: the Contributor models, whose terms let Meta train on their inputs, and any added with `CODEX_ROUTER_TRAINING_MODELS`. They may share one with each other. Anthropic's terms bar using Claude's output to train competing models, so Claude is kept from the training tier as OpenAI is. Once a tracked session uses one side, the router refuses the other:
 
 > [!IMPORTANT]
 > A refused request gets HTTP 409 (`provider_isolation`) and a message to start a new thread; nothing is sent upstream.
@@ -129,7 +129,7 @@ The rule covers models on either route, and whole agent trees:
 - **Ultra Spark:** Counts with OpenAI and Claude, and its lead's requests stay off collecting endpoints even without a session ID.
 - **The deny data policy:** A request with `X-Codex-Router-Data-Policy: deny` counts with them too, with or without a session ID; see Routing policy.
 - **Spawned agents:** Share their parent's session, so the rule covers whole agent trees: a Muse worker spawned by a native OpenAI thread is refused.
-- **DeepSeek and other OpenRouter models:** Work with either side. After a native OpenAI or Claude model or Ultra Spark, a session's OpenRouter requests, the router's own searches included, carry `provider.data_collection: "deny"`, so they reach only endpoints that do not collect data; DeepSeek's own endpoint, which may train on prompts, is left out.
+- **DeepSeek and other OpenRouter models:** Work with either side. After a native OpenAI or Claude model or Ultra Spark, a session's OpenRouter requests, the router's own searches included, carry `provider.data_collection: "deny"`, so they reach only the endpoints OpenRouter's own records count as not collecting data, whatever the router's list says; today that leaves out DeepSeek's own endpoint.
 - **No such endpoint:** Codex receives a `[router diagnostic]` instead of OpenRouter's HTTP 404: pin the model to another endpoint or start a new thread. `request.forwarded` logs `dataCollection`.
 - **Records:** Each session's side, without content, in `unified-router/session-sides.json` for 30 days after its last request, so the rule survives restarts. A `private` session's record never expires, so its thread stays off the training tier however long it sits idle: one that used non-training Ultra Spark, or whose first request asked for the deny data policy.
 - **Opt-out:** None; `CODEX_ROUTER_TRAINING_MODELS` can only add models to the training tier.

@@ -10,7 +10,7 @@ A loopback-only Responses API router: local programs get one endpoint for OpenAI
 
 - **Claude on Anthropic's API:** With `ANTHROPIC_API_KEY`, Claude runs on the Messages API with prompt caching and signed thinking, and moves to OpenRouter if the key, credits or spend limit fail, unless the caller keeps it on Anthropic's API with `X-Codex-Router-Fallback: none` ([details](docs/routing.md#routing-policy)); without the key it runs on OpenRouter.
 - **Agent orchestration:** Ultra Spark lets DeepSeek coordinate up to 10 Muse Spark workers with `fork_context: false`, on endpoints that do not train, or on Meta's cheaper training tier as Ultra Spark Contributor.
-- **Privacy boundaries:** Training-tier sessions cannot mix with native OpenAI, Claude, or non-training Ultra Spark sessions, and after any of them a session reaches only OpenRouter endpoints that keep no data.
+- **Privacy boundaries:** Training-tier sessions cannot mix with native OpenAI, Claude, or non-training Ultra Spark sessions, and after any of them a session reaches only the OpenRouter endpoints that OpenRouter's records count as not collecting data.
 - **Provider compatibility:** Repairs reasoning and tool history, handles DeepSeek JSON-mode structured output, normalizes problematic tool arguments, and never silently substitutes models.
 - **Resilient streaming:** Bounded recovery for OpenRouter and Anthropic, context-overflow signaling for Codex compaction, router diagnostics, and disconnect cancellation.
 - **Router-run web search:** Every model except native OpenAI ones searches through OpenRouter, and the results stay in the thread for later turns.
@@ -21,9 +21,9 @@ A loopback-only Responses API router: local programs get one endpoint for OpenAI
 
 ### How it works
 
-Codex talks to the router as one model provider. The router picks the upstream from the model slug, adapts each request to that provider, and streams the response back. Native OpenAI and Claude models never share a tracked Codex session with training-tier models; requests without a session ID are not tracked. [How routing works](docs/routing.md#routing-and-compatibility) has the details.
+Codex talks to the router as one model provider. The router picks the upstream from the model slug, adapts each request to that provider, and streams the response back. Native OpenAI and Claude models never share a tracked Codex session with models the router declares training-tier, and protected requests reach only endpoints that OpenRouter's own records count as not collecting data; requests without a session ID are not tracked. [How routing works](docs/routing.md#routing-and-compatibility) has the details.
 
-**Key:** 🟢 router · 🟡 OpenRouter · 🔵 DeepSeek · 🟠 Anthropic · ⚪ OpenAI · 🔴 training tier, where Meta trains on the inputs.
+**Key:** 🟢 router · 🔵 OpenRouter, for DeepSeek, Ultra Spark, Muse and other models · 🟡 OpenRouter's endpoints · 🟠 Anthropic · ⚪ callers and OpenAI · 🔴 refused or excluded; dashed lines are conditional.
 
 ```mermaid
 ---
@@ -38,7 +38,8 @@ config:
     themeCSS: >-
         foreignObject { overflow: visible; }
         [data-look="neo"] * { filter: none !important; }
-        .node foreignObject, .node foreignObject *, .edgeLabel, .edgeLabel * {
+        .node foreignObject, .node foreignObject *, .edgeLabel, .edgeLabel *,
+        .cluster-label, .cluster-label * {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif !important; line-height: 1.5 !important; }
         .node foreignObject, .node foreignObject * { white-space: nowrap !important; }
         code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
@@ -59,17 +60,14 @@ config:
         box-shadow: 0 0 0 5px var(--fill), 0 0 0 7px var(--ring); }
         .label[data-id^="L_CX_RT_"] .labelBkg {
         --ring: #2e9e5b; }
-        .label[data-id^="L_RT_OR_"] .labelBkg,
-        .label[data-id^="L_OR_CL_"] .labelBkg,
-        .label[data-id^="L_OR_DS_"] .labelBkg {
-        --ring: #e3a008; }
-        .label[data-id^="L_RT_AN_"] .labelBkg {
+        .label[data-id^="L_TOP_ORB_"] .labelBkg {
+        --ring: #4d6bfe; }
+        .label[data-id^="L_TOP_AN_"] .labelBkg {
         --ring: #d97757; }
-        .label[data-id^="L_RT_OA_"] .labelBkg {
+        .label[data-id^="L_TOP_OA_"] .labelBkg {
         --ring: #b5bcc6; }
-        .label[data-id^="L_US_MU_"] .labelBkg,
-        .label[data-id^="L_OA_TT_"] .labelBkg,
-        .label[data-id^="L_CL_TT_"] .labelBkg {
+        .label[data-id^="L_TOP_NO_"] .labelBkg,
+        .label[data-id^="L_OR_CD_"] .labelBkg {
         --ring: #c94a4a; }
         .edgeLabel p, .edgeLabel span, .edgeLabel text {
         --halo: var(--fill, var(--vscode-editor-background,
@@ -82,48 +80,49 @@ config:
         0 0 3px var(--halo), 0 0 4px var(--halo); }
 ---
 flowchart TB
-    CX["<b>Codex</b><br/>CLI and app-server"]
-    RT["<b>Unified Model Router</b><br/>127.0.0.1, local token"]
-    OA["<b>ChatGPT Codex backend</b><br/>needs a ChatGPT plan"]
-    AN["<b>Anthropic API</b><br/>optional API key"]
-    OR["<b>OpenRouter</b><br/>required key<br/>cataloged models<br/><b>web search for all</b><br/><b>but native models</b>"]
-    CL["<b>Claude Sonnet · Opus 5.5</b><br/>prompt-cached"]
-    DS["<b>DeepSeek V4.1 Flash</b><br/>default; its own<br/>endpoint may train"]
-    subgraph TT["Training tier"]
+    subgraph TOP["This machine, loopback only"]
         direction LR
-        US["<b>Ultra Spark Contributor</b><br/>DeepSeek leading workers"]
-        MU["<b>Muse Spark 1.3 Contributor</b><br/>Meta, trains on inputs"]
+        CX["<b>Codex and local callers</b><br/>one Responses API endpoint"]
+        RT["<b>Unified Model Router</b><br/>127.0.0.1, local token<br/>names what served, on request"]
+    end
+    OA["<b>ChatGPT Codex backend</b><br/>native models"]
+    AN["<b>Anthropic API</b><br/>Claude, with an API key"]
+    NO["<b>HTTP 409, nothing sent</b><br/>a model the router declares<br/>training-tier, in a protected<br/>session or under deny"]
+    subgraph ORB["OpenRouter and its endpoints, each with its recorded data policy"]
+        direction LR
+        OR["<b>OpenRouter</b><br/>under <code>data_collection: deny</code>,<br/>only endpoints recorded as<br/>not collecting data"]
+        CD["<b>Recorded as collecting data</b><br/>excluded by OpenRouter's<br/>records, never by name"]
     end
     CX -->|"Responses API"| RT
-    RT -->|"native models"| OA
-    RT -->|"anthropic/ with an Anthropic key"| AN
-    RT -->|"deepseek/ · ultra-spark/ · ultra-spark-private/ · openrouter/"| OR
-    AN --> CL
-    OR -->|"no Anthropic key, or fallback"| CL
-    OR -->|"after OpenAI, Claude, or non-training Ultra Spark: data-collecting endpoints blocked"| DS
-    OR --> TT
-    US -->|"up to 10 workers"| MU
-    OA -.-|"refused in the same session"| TT
-    CL -.-|"refused in the same session"| TT
+    TOP -->|"native models"| OA
+    TOP -->|"anthropic/ with an Anthropic key"| AN
+    TOP -->|"DeepSeek, Ultra Spark, Muse and other models, web search, and Claude when the router has no Anthropic key; protected requests carry the deny policy"| ORB
+    TOP -.->|"Claude when Anthropic refuses the key, credits or a limit; never with Fallback:#160;none"| ORB
+    TOP --x|"refused by isolation"| NO
+    OR -.->|"only without deny"| CD
+    AN ~~~ ORB
 
     classDef default fill:#8a96a82e,stroke:#8a96a8,stroke-width:1px
+    classDef row fill:#2e9e5b0d,stroke:#2e9e5b,stroke-width:1px
     classDef router fill:#2e9e5b4d,stroke:#2e9e5b,stroke-width:2px
-    classDef openrouter fill:#e3a0084d,stroke:#e3a008,stroke-width:2px
-    classDef deepseek fill:#4d6bfe4d,stroke:#4d6bfe,stroke-width:2px
+    classDef openrouter fill:#4d6bfe4d,stroke:#4d6bfe,stroke-width:2px
+    classDef endpoints fill:#e3a0080d,stroke:#e3a008,stroke-width:1px
     classDef openai fill:#b5bcc633,stroke:#b5bcc6,stroke-width:2px
     classDef anthropic fill:#d977574d,stroke:#d97757,stroke-width:2px
-    classDef training fill:#c94a4a4d,stroke:#c94a4a,stroke-width:2px
-    classDef trainingTier fill:#c94a4a14,stroke:#c94a4a,stroke-width:2px,stroke-dasharray:6 4
+    classDef refused fill:#c94a4a4d,stroke:#c94a4a,stroke-width:2px
+    classDef excluded fill:#c94a4a14,stroke:#c94a4a,stroke-width:2px,stroke-dasharray:6 4
+    class TOP row
     class RT router
     class OR openrouter
-    class DS,US deepseek
+    class ORB endpoints
     class CX,OA openai
-    class AN,CL anthropic
-    class MU training
-    class TT trainingTier
+    class AN anthropic
+    class NO refused
+    class CD excluded
+    linkStyle 5 stroke:#c94a4a,stroke-width:2px
 ```
 
-<p align="center"><em>All requests go through the router; labels show the route. A dotted line joins models the router never mixes in one session.</em></p>
+<p align="center"><em>All requests go through the router; labels show the route. A dotted line is a path taken only on that condition, and a line ending in a cross is a refusal that sends nothing on.</em></p>
 
 ---
 
