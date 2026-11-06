@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use the Unified Model Router, please cite the working paper."
+title: Unified Model Router
+type: software
+authors:
+  - family-names: Husadzic
+    given-names: Mirza
+    orcid: "https://orcid.org/0009-0004-8359-4090"
+repository-code: "https://github.com/mirzahusadzic/unified-model-router"
+license: Apache-2.0
+preferred-citation:
+  type: report
+  title: "Policy at the Junction: The Unified Model Router as a Narrow Waist"
+  authors:
+    - family-names: Husadzic
+      given-names: Mirza
+      orcid: "https://orcid.org/0009-0004-8359-4090"
+  year: 2026
+  month: 11
+  publisher:
+    name: Zenodo
+  doi: "10.5281/zenodo.24014211"
+  url: "https://doi.org/10.5281/zenodo.24014211"

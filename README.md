@@ -5,6 +5,7 @@
 ![Node.js 20+](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![Codex CLI 0.166](https://img.shields.io/badge/Codex%20CLI-0.166-111111)
 ![macOS · Linux · Windows](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24014211.svg)](https://doi.org/10.5281/zenodo.24014211)
 
 A loopback-only Responses API router: local programs get one endpoint for OpenAI, DeepSeek, Claude, Muse Spark and other OpenRouter models, with each session's history and privacy boundaries kept across model switches. Codex is its first client: the installer sets Codex up to switch models from its own picker within one thread, and Codex's requests are what the tests replay.
 
@@ -193,6 +194,25 @@ codex -m anthropic/claude-opus-5-5
 Muse Spark 1.3 Contributor and Ultra Spark Contributor's workers use Meta's contributor tier, which trains on everything it receives, so use them only for code you are willing to share. DeepSeek's own endpoint may train on prompts too; after a native OpenAI or Claude model, or in a non-training Ultra Spark session, a session's OpenRouter requests go only to endpoints that keep no data, so pin DeepSeek to one to use it there. The router refuses to mix them with native OpenAI, Claude, or non-training Ultra Spark models in a tracked Codex session; requests without a session ID are not tracked ([details](docs/routing.md#provider-isolation)).
 
 Without a ChatGPT login, add `--profile unified-openrouter` to any of the commands above, Ultra Spark included ([details](docs/setup.md#openrouter-only-profile)). To prefer specific OpenRouter endpoints, set [`CODEX_ROUTER_PROVIDER_ORDER`](docs/setup.md#openrouter-endpoint-preferences).
+
+---
+
+### Cite
+
+The working paper on Zenodo describes the router as a narrow waist: one protocol and one policy point between local clients and their providers. The paper is under CC BY 4.0 and the code under Apache-2.0; the paper's DOI always resolves to its latest version:
+
+```bibtex
+@misc{husadzic2026junction,
+  author    = {Husadzic, Mirza},
+  title     = {Policy at the Junction: The Unified Model Router
+               as a Narrow Waist},
+  year      = {2026},
+  publisher = {Zenodo},
+  note      = {Working paper},
+  doi       = {10.5281/zenodo.24014211},
+  url       = {https://doi.org/10.5281/zenodo.24014211}
+}
+```
 
 ---
 
