@@ -197,6 +197,8 @@ curl -s http://127.0.0.1:18766/health
 | `capabilities.generationLookup` | Support for `GET /v1/generations/<id>`. |
 | `capabilities.promptCacheModes` | Values of `X-Codex-Router-Prompt-Cache` (`instructions`, `none`), which places Claude's cache breakpoint. |
 | `capabilities.revisionPrecondition` | Support for the `X-Codex-Router-Revision` header below. |
+| `capabilities.trainingDeclarations` | Values of `training` in `GET /v1/models`, below (`declared-training`, `endpoint`, `provider-terms`, `unknown`). |
+| `capabilities.modelTraining` | The meaning of those values (`training-v1`). A later version may change what a value means; a new value alone does not. |
 | `revision` | SHA-256 over the running router's entry file and the modules beside it. |
 | `pid` | The router's process ID. The installer and the verifier accept it only from the service's process or one that process started, such as the real node under a version manager's shim. It is self-reported, so the check catches a stray copy of the router, not a process that lies about its PID. |
 
@@ -214,6 +216,17 @@ X-Codex-Router-Revision: <lowercase-sha256-from-health>
 
 - **Check the capability first:** older routers may ignore the header.
 - **Scope:** the precondition detects a changed source, not a restart of identical code or a service configuration change.
+
+`GET /v1/models`, with the router token, lists the catalog's models as `{"id", "object": "model", "training"}`. `training` is a string, never a boolean: what the router itself declares about the model's training, for the weakest route a request for it can take, also without a session ID. A client treats a value it does not know as `unknown` and fails closed.
+
+| `training` | Meaning | Models |
+| --- | --- | --- |
+| `declared-training` | The router counts it as training-tier. | Muse Spark 1.3 Contributor, Ultra Spark Contributor, and each `CODEX_ROUTER_TRAINING_MODELS` entry |
+| `endpoint` | OpenRouter picks the endpoint, and the router does not restrict it to endpoints that do not collect data; `X-Codex-Router-Report` names the provider afterwards. | DeepSeek, Muse Spark 1.3, other OpenRouter models, Claude through OpenRouter, and `anthropic/` models whenever an OpenRouter key is set, since a refusal can move them there |
+| `provider-terms` | One provider, or endpoints restricted to those that do not collect data, so that provider's terms decide. | Native OpenAI models, non-training Ultra Spark, and `anthropic/` models without an OpenRouter key |
+| `unknown` | A route the router does not classify. | None in the shipped catalog |
+
+The listing follows the router's configuration: its training-tier list and its keys. Headers only make a request stricter: `X-Codex-Router-Data-Policy: deny` restricts OpenRouter requests to endpoints that do not collect data, and `X-Codex-Router-Fallback: none` keeps Claude on Anthropic's API.
 
 ---
 

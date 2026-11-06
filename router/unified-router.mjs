@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { anthropicMaxTokens, anthropicMaxTokensLimit, anthropicRefusal, messagesMaxTokens } from './anthropic.mjs';
 import { isObject, routerRevision as sourceRevision } from './common.mjs';
 import { anthropicApiKey, envFile, host, logEvent, modelCatalogFile, openrouterApiKey, port, rejectedRequestDir, routerToken } from './config.mjs';
-import { claudeRoute, holdAnthropicRoute, protectedSession, recordClaudeRoute, sessionRefusal, sessionSide } from './sessions.mjs';
+import { claudeRoute, holdAnthropicRoute, protectedSession, recordClaudeRoute, sessionRefusal, sessionSide, trainingDeclaration, trainingDeclarations } from './sessions.mjs';
 import { generationReport, reportValues, servedByStream } from './served-by.mjs';
 import { contextOverflowMessage, openUpstream, openrouterTarget, parseUpstreamError, readUpstreamBody, routeFor, upstreamHeaders, upstreamModelFor, upstreamTrace, usageLogging, usageTap } from './upstream.mjs';
 import { openRouterStream, runWebSearch, webSearchEffort } from './web-search.mjs';
@@ -193,7 +193,11 @@ function modelList() {
     const catalog = JSON.parse(readFileSync(modelCatalogFile, 'utf8'));
     return {
       object: 'list',
-      data: (catalog.models || []).map(model => ({ id: model.slug, object: 'model' })),
+      data: (catalog.models || []).map(model => {
+        const { provider } = routeFor(model.slug);
+        return { id: model.slug, object: 'model',
+          training: trainingDeclaration(model.slug, provider, upstreamModelFor(model.slug, provider)) };
+      }),
     };
   } catch {
     return { object: 'list', data: [] };
@@ -266,6 +270,9 @@ const server = http.createServer((request, response) => {
         endpointPins: true,
         fallbackPolicies,
         thinkingBudgets: true,
+        // Each GET /v1/models entry's `training`; see trainingDeclaration.
+        trainingDeclarations,
+        modelTraining: 'training-v1',
       },
     });
     return;

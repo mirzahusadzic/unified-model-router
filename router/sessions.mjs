@@ -59,6 +59,24 @@ export function sessionSide(requestedModel, provider, upstreamModel) {
   return null;
 }
 
+// What the router itself declares about a model's training, for each entry of
+// GET /v1/models: the weakest route a request for it can take, also without a
+// session ID. Caller headers only ever make a request stricter. A route not
+// classified here is `unknown`; values are added, never renamed or reused.
+export const trainingDeclarations = ['declared-training', 'endpoint', 'provider-terms', 'unknown'];
+
+export function trainingDeclaration(requestedModel, provider, upstreamModel, { openrouterFallback = Boolean(openrouterApiKey) } = {}) {
+  if (typeof requestedModel !== 'string' || typeof upstreamModel !== 'string') return 'unknown';
+  const side = sessionSide(requestedModel, provider, upstreamModel);
+  if (side === 'training') return 'declared-training';
+  // Non-training Ultra Spark's lead always carries the deny, and its workers share its session.
+  if (provider === 'openai' || side === 'private') return 'provider-terms';
+  // A refusal Anthropic's API gives can move Claude to OpenRouter, without the deny when there is no session.
+  if (provider === 'anthropic') return openrouterFallback ? 'endpoint' : 'provider-terms';
+  if (provider === 'openrouter') return 'endpoint';
+  return 'unknown';
+}
+
 // A session that used a native OpenAI or Claude model, or non-training Ultra
 // Spark: its OpenRouter requests go only to endpoints that do not collect data
 // (see adaptForUpstream).

@@ -26,6 +26,9 @@ process.env.CODEX_ROUTER_TOKEN = 'a'.repeat(64);
 process.env.CODEX_ROUTER_PORT = '18766';
 process.env.CODEX_ROUTER_LOG_LEVEL = 'info';
 process.env.CODEX_ROUTER_TRAINING_MODELS = 'vendor/trains';
+// Absent until a test writes it, so no test reads a real Codex catalog.
+const modelCatalog = join(routerHome, 'models.json');
+process.env.CODEX_MODEL_CATALOG = modelCatalog;
 process.env.CODEX_ROUTER_PROVIDER_ORDER = 'vendor/pinned = google-vertex/us, google-ai-studio; vendor/other=other-endpoint';
 const clientHeaders = {
   host: '127.0.0.1:18766',
@@ -1562,6 +1565,37 @@ for (const phase of ['before headers', 'after headers', 'during streaming', 'aft
     assert.equal(events.includes('upstream.error'), false);
   });
 }
+
+test('the model list declares each model\'s training by its weakest route, and health names the values', async () => {
+  const expected = {
+    'openrouter/meta/muse-spark-1.3-contributor': 'declared-training',
+    'ultra-spark/deepseek-v4.1-flash-1017': 'declared-training',
+    'openrouter/vendor/trains': 'declared-training',
+    'ultra-spark-private/deepseek-v4.1-flash-1017': 'provider-terms',
+    'gpt-6-astra': 'provider-terms',
+    'deepseek/deepseek-v4.1-flash-1017': 'endpoint',
+    'openrouter/meta/muse-spark-1.3': 'endpoint',
+    'openrouter/anthropic/claude-sonnet-5.5': 'endpoint',
+    // With an OpenRouter key, a refusal can move Claude there.
+    'anthropic/claude-sonnet-5-5': 'endpoint',
+  };
+  writeFileSync(modelCatalog, JSON.stringify({ models: [...Object.keys(expected).map(slug => ({ slug })), { slug: 42 }] }));
+  const models = await exchange('', {}, { method: 'GET', url: '/v1/models' });
+  assert.equal(models.status, 200);
+  assert.equal(models.body.object, 'list');
+  // Existing callers read `id` and `object`, which keep their values and order.
+  assert.deepEqual(models.body.data, [...Object.entries(expected), [42, 'unknown']]
+    .map(([id, training]) => ({ id, object: 'model', training })));
+  for (const entry of models.body.data) assert.deepEqual(Object.keys(entry), ['id', 'object', 'training']);
+  const { trainingDeclaration } = await import('../router/sessions.mjs');
+  assert.equal(trainingDeclaration('anthropic/claude-sonnet-5-5', 'anthropic', 'claude-sonnet-5-5', { openrouterFallback: false }), 'provider-terms');
+  assert.equal(trainingDeclaration('example/model', 'other', 'example/model'), 'unknown');
+  const health = await exchange('', {}, { method: 'GET', url: '/health' });
+  assert.deepEqual(health.body.capabilities.trainingDeclarations, ['declared-training', 'endpoint', 'provider-terms', 'unknown']);
+  assert.equal(health.body.capabilities.modelTraining, 'training-v1');
+  writeFileSync(modelCatalog, '{}');
+  assert.deepEqual((await exchange('', {}, { method: 'GET', url: '/v1/models' })).body, { object: 'list', data: [] });
+});
 
 test('router authentication is required even with a Codex bearer token', async () => {
   const count = forwarded.length;
