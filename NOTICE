@@ -4,7 +4,7 @@ Copyright 2026 Mirza Husadzic
 Licensed under the Apache License, Version 2.0. See LICENSE.
 
 This project includes model-message templates in the catalog/*-model.json
-entries from the bundled model catalog of @openai/codex 0.166.0 (Apache-2.0):
+entries from the bundled model catalog of @openai/codex 0.167.0 (Apache-2.0):
 
 OpenAI Codex
 Copyright 2025 OpenAI

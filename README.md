@@ -3,7 +3,7 @@
 [![CI](https://github.com/mirzahusadzic/unified-model-router/actions/workflows/ci.yml/badge.svg)](https://github.com/mirzahusadzic/unified-model-router/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Node.js 20+](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
-![Codex CLI 0.166](https://img.shields.io/badge/Codex%20CLI-0.166-111111)
+![Codex CLI 0.167](https://img.shields.io/badge/Codex%20CLI-0.167-111111)
 ![macOS · Linux · Windows](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24014211.svg)](https://doi.org/10.5281/zenodo.24014211)
 
@@ -129,12 +129,12 @@ flowchart TB
 
 ### Install
 
-Requires Codex CLI (tested with **0.166.0**), **Node.js 20+**, and an **OpenRouter API key**. Windows also needs PowerShell 5.1 or later.
+Requires Codex CLI (tested with **0.167.0**), **Node.js 20+**, and an **OpenRouter API key**. Windows also needs PowerShell 5.1 or later.
 
-Skip the first command if you already have Codex 0.166.0. The first install asks for your OpenRouter API key:
+Skip the first command if you already have Codex 0.167.0. The first install asks for your OpenRouter API key:
 
 ```sh
-npm install -g @openai/codex@0.166.0
+npm install -g @openai/codex@0.167.0
 git clone https://github.com/mirzahusadzic/unified-model-router.git
 cd unified-model-router
 node install.mjs

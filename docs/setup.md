@@ -67,7 +67,7 @@ node install.mjs
 
 #### Codex version
 
-The router is tested with Codex **0.166.0**, and newer versions can change what it relies on. `node install.mjs` warns, without stopping, when the CLI or the running daemon differs; `codex app-server daemon version` shows both.
+The router is tested with Codex **0.167.0**, and newer versions can change what it relies on. `node install.mjs` warns, without stopping, when the CLI or the running daemon differs; `codex app-server daemon version` shows both.
 
 | Codex | Changed for the router |
 | --- | --- |
@@ -77,7 +77,7 @@ The router is tested with Codex **0.166.0**, and newer versions can change what 
 
 | To | Do |
 | --- | --- |
-| Install the tested version | `npm install -g @openai/codex@0.166.0` |
+| Install the tested version | `npm install -g @openai/codex@0.167.0` |
 | Change Codex versions | Install the CLI version you want, rerun `node install.mjs`, which rebuilds the catalog from its bundled models and pins the daemon to it, then run `node install.mjs --verify` |
 | Go back to an earlier version | Use its `codex-<version>` tag, the last router commit verified with it; see [Return to an earlier Codex version](operations.md#return-to-an-earlier-codex-version) |
 
@@ -119,7 +119,7 @@ To manage the service, see [Service management](operations.md#service-management
 
 #### Activate the provider
 
-Restart Codex windows that were open before installation, and start a new thread. Existing threads keep the provider they were created with, and Codex 0.166.0 refuses to continue one under another ("This chat uses openai, but your current provider is unified"), so resume an older thread with its own provider, such as `codex resume <id> -c model_provider=openai`.
+Restart Codex windows that were open before installation, and start a new thread. Existing threads keep the provider they were created with, and since 0.167.0 Codex refuses to continue one under another ("This chat uses openai, but your current provider is unified"), so resume an older thread with its own provider, such as `codex resume <id> -c model_provider=openai`.
 
 The shared app-server daemon keeps the configuration and catalog it started with, so the installer restarts a running one by pinning it, which interrupts its open sessions. With `--no-service`, with `CODEX_ROUTER_RESTART_DAEMON=0`, or when Codex itself runs the installer, it skips the restart: restart the daemon once yourself, or pin and restart it with `codex app-server daemon update --from-cli --yes`.
 
@@ -307,7 +307,7 @@ codex --profile unified-openrouter \
 ```
 
 - **Models:** any router model in the catalog, and Ultra Spark's Muse workers use the same profile; use the main configuration for native OpenAI models.
-- **Not a sandbox:** it supplies transport settings, not prompts, plugins, or task policies, and still inherits your other user and project settings. Codex 0.166.0 does not load it with `--ignore-user-config`.
+- **Not a sandbox:** it supplies transport settings, not prompts, plugins, or task policies, and still inherits your other user and project settings. Codex 0.167.0 does not load it with `--ignore-user-config`.
 - **Isolated execution:** clients that need it must manage their own Codex home, instructions, tools, permissions, and output validation.
 
 ---
@@ -445,7 +445,7 @@ node install.mjs
 
 This project is licensed under [Apache-2.0](../LICENSE), and [NOTICE](../NOTICE) preserves the applicable OpenAI attribution. It is an independent community project.
 
-- **Catalog templates:** the DeepSeek entry includes model-message templates that match the bundled catalog of `@openai/codex` **0.166.0**, whose package metadata declares Apache-2.0; its [adjacent file notice](../catalog/deepseek-model.json.license) identifies those sections and the modifications. The Muse, Ultra Spark, and Claude entries derive from the same template, as their notices record ([Muse](../catalog/muse-model.json.license), [Ultra Spark](../catalog/deepseek-ultra-spark-model.json.license), [Claude Sonnet](../catalog/claude-sonnet-model.json.license), [Claude Opus](../catalog/claude-opus-model.json.license), and the OpenRouter-only [Sonnet](../catalog/claude-sonnet-openrouter-model.json.license) and [Opus](../catalog/claude-opus-openrouter-model.json.license) entries).
+- **Catalog templates:** the DeepSeek entry includes model-message templates that match the bundled catalog of `@openai/codex` **0.167.0**, whose package metadata declares Apache-2.0; its [adjacent file notice](../catalog/deepseek-model.json.license) identifies those sections and the modifications. The Muse, Ultra Spark, and Claude entries derive from the same template, as their notices record ([Muse](../catalog/muse-model.json.license), [Ultra Spark](../catalog/deepseek-ultra-spark-model.json.license), [Claude Sonnet](../catalog/claude-sonnet-model.json.license), [Claude Opus](../catalog/claude-opus-model.json.license), and the OpenRouter-only [Sonnet](../catalog/claude-sonnet-openrouter-model.json.license) and [Opus](../catalog/claude-opus-openrouter-model.json.license) entries).
 - **Redistributing:** keep the licenses and applicable notices with an entry or a modified copy, and record your own changes.
 - **Prompts:** the main and persistent instructions in `prompts/` are maintained separately and are not verbatim copies of the corresponding instructions in the installed Codex catalog; this comparison does not establish originality against other sources. Native model entries are read from the user's installed Codex during installation.
 - **Service terms:** the software license does not grant access to models or hosted services. Access to OpenAI, OpenRouter, and each model provider, including Meta's contributor tier, remains subject to their respective service terms.

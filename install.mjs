@@ -134,7 +134,7 @@ const windows = process.platform === 'win32';
 // keeps and may update its own copy of Codex, differs from the tested version.
 // An installation with a service pins the daemon to the CLI's Codex unless
 // asked not to, so only the CLI's version matters then.
-const testedCodexVersion = '0.166.0';
+const testedCodexVersion = '0.167.0';
 function codex(commandArgs) {
   const run = spawnSync('codex', commandArgs, { encoding: 'utf8', shell: windows, timeout: 15000 });
   return run.status === 0 ? run.stdout : '';

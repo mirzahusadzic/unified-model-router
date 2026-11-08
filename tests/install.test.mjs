@@ -247,8 +247,8 @@ test('install.mjs warns, without stopping, when Codex differs from the tested ve
       OPENROUTER_API_KEY: 'synthetic-install-key', CODEX_ROUTER_TOKEN: '', CODEX_ROUTER_DISABLE_APPS: '1' },
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stderr, /tested with Codex 0\.166\.0, but the Codex CLI is 9\.9\.9/);
-  assert.match(result.stderr, /npm install -g @openai\/codex@0\.166\.0/);
+  assert.match(result.stderr, /tested with Codex 0\.167\.0, but the Codex CLI is 9\.9\.9/);
+  assert.match(result.stderr, /npm install -g @openai\/codex@0\.167\.0/);
 });
 
 test('install.mjs --help lists every installer setting in docs/setup.md, and errors point to it', () => {
@@ -314,11 +314,11 @@ function fakeDaemonCodex(directory) {
 const args = process.argv.slice(2).join(' ');
 appendFileSync(process.env.FAKE_CODEX_LOG, args + '\\n');
 if (args === '--version') {
-  console.log('codex-cli 0.166.0');
+  console.log('codex-cli 0.167.0');
 } else if (args === 'app-server daemon version') {
   if (process.env.FAKE_DAEMON !== 'running') process.exit(1);
-  const managed = process.env.FAKE_MANAGED_VERSION || '0.166.0';
-  console.log(JSON.stringify({ status: 'running', managedCodexVersion: managed, appServerVersion: managed, cliVersion: '0.166.0' }));
+  const managed = process.env.FAKE_MANAGED_VERSION || '0.167.0';
+  console.log(JSON.stringify({ status: 'running', managedCodexVersion: managed, appServerVersion: managed, cliVersion: '0.167.0' }));
 } else if (args === 'app-server daemon update --from-cli --yes') {
   process.exit(Number(process.env.FAKE_PIN_STATUS || 0));
 }
@@ -372,7 +372,7 @@ test('install.mjs suggests pinning a daemon on another Codex when it does not pi
     env: { ...process.env, HOME: directory, CODEX_HOME: home, PATH: bin + (windows ? ';' : ':') + process.env.PATH,
       FAKE_CODEX_LOG: join(directory, 'calls.log'), FAKE_DAEMON: 'running', FAKE_MANAGED_VERSION: '0.163.0' },
   });
-  assert.match(result.stderr, /^Warning: this router is tested with Codex 0\.166\.0, but the Codex app-server daemon runs 0\.163\.0\. To match it: codex app-server daemon update --from-cli --yes$/m);
+  assert.match(result.stderr, /^Warning: this router is tested with Codex 0\.167\.0, but the Codex app-server daemon runs 0\.163\.0\. To match it: codex app-server daemon update --from-cli --yes$/m);
   assert.doesNotMatch(result.stderr, /npm install/);
 });
 
@@ -389,10 +389,10 @@ test('the daemon check fails while the daemon updates itself or runs another Cod
       FAKE_DAEMON: 'running', CODEX_ROUTER_PIN_DAEMON: '', ...env },
   });
   assert.equal(check().status, 0, check().stderr);
-  const drifted = check({ FAKE_MANAGED_VERSION: '0.167.0' });
+  const drifted = check({ FAKE_MANAGED_VERSION: '0.168.0' });
   assert.equal(drifted.status, 1);
-  assert.match(drifted.stderr, /runs Codex 0\.167\.0, but the CLI is 0\.166\.0/);
-  writeFileSync(join(packageRoot, 'auto-update-version'), '0.166.0-aarch64-apple-darwin');
+  assert.match(drifted.stderr, /runs Codex 0\.168\.0, but the CLI is 0\.167\.0/);
+  writeFileSync(join(packageRoot, 'auto-update-version'), '0.167.0-aarch64-apple-darwin');
   const unpinned = check();
   assert.equal(unpinned.status, 1);
   assert.match(unpinned.stderr, /updates itself instead of following the CLI/);

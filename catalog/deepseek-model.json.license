@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Mirza Husadzic
 SPDX-License-Identifier: Apache-2.0
 
 Applies to: deepseek-model.json
-Source: @openai/codex 0.166.0, codex debug models --bundled
+Source: @openai/codex 0.167.0, codex debug models --bundled
 Upstream project: https://github.com/openai/codex
 
 Modified for Unified Model Router in 2026: DeepSeek model identity,

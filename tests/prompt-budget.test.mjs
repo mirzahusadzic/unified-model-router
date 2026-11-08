@@ -25,7 +25,7 @@ const installedVersion = spawnSync('codex', ['--version'], { encoding: 'utf8', s
 const versionSkip = !installedVersion ? 'the Codex CLI is not installed'
   : installedVersion !== testedVersion ? `Codex ${installedVersion} is installed; the expectations are for ${testedVersion}` : false;
 
-// Reviewed on macOS with Codex 0.166.0. Feature defaults and tools can differ
+// Reviewed on macOS with Codex 0.167.0. Feature defaults and tools can differ
 // by platform, so other platforms skip until their expectations are added.
 const reviewed = {
   darwin: {
@@ -53,7 +53,7 @@ const reviewed = {
       'api_key_cyber_access_programs', 'api_key_model_discovery', 'auth_elicitation', 'bedrock_setup_wizard',
       'browser_annotation_api', 'browser_use', 'browser_use_external', 'browser_use_full_cdp_access', 'cli_daybreak',
       'code_mode_host', 'code_mode_interrupt', 'collaboration_modes', 'compaction_image_budget', 'computer_use',
-      'content_item_kinds', 'daemon_auto_start', 'enable_request_compression', 'fast_mode', 'goals',
+      'content_item_kinds', 'daemon_auto_start', 'deferred_tool_world_state', 'enable_request_compression', 'fast_mode', 'goals',
       'guardian_reuse_parent_compaction', 'hooks', 'image_generation', 'in_app_browser', 'in_app_chat',
       'in_app_dictation', 'in_app_local_automation', 'in_app_updates', 'in_app_voice', 'incremental_tools',
       'instant_interrupt', 'item_ids', 'mcp_oauth_refresh_coordination', 'mentions_v2', 'multi_agent',

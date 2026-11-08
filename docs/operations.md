@@ -346,7 +346,7 @@ cp -p "$backup_dir/models.json" "$HOME/.codex/models.json"
 | `unified-openrouter.config.toml` | If you use the OpenRouter-only profile |
 | `deepseek.config.toml.retired` | As `deepseek.config.toml`, only if you still use the old `--profile deepseek` setup |
 
-- **Router threads:** threads keep their provider, and Codex 0.166.0 refuses to continue one under another. Continue a router thread with `-c model_provider=unified` while the router runs, or start a new thread.
+- **Router threads:** threads keep their provider, and since 0.166.0 Codex refuses to continue one under another. Continue a router thread with `-c model_provider=unified` while the router runs, or start a new thread.
 - **Back to before the router:** remove the generated counterpart of each file missing from the backup, and move `unified-router/` aside once the restored configuration no longer refers to it, so the stored key, local token, isolation records, and service files go with it.
 - **The daemon:** the installer pinned it to the CLI's Codex; `codex app-server daemon update` returns it to production updates.
 - **Then:** restart Codex and its daemon (`codex app-server daemon restart`), and start new threads.
@@ -357,7 +357,7 @@ cp -p "$backup_dir/models.json" "$HOME/.codex/models.json"
 
 | Symptom | Check |
 | --- | --- |
-| Something broke after a Codex update | Compare `codex --version` and `codex app-server daemon version` with the tested version in [Codex version](setup.md#codex-version). Install it with `npm install -g @openai/codex@0.166.0`, then rerun `node install.mjs`, which also pins the daemon. |
+| Something broke after a Codex update | Compare `codex --version` and `codex app-server daemon version` with the tested version in [Codex version](setup.md#codex-version). Install it with `npm install -g @openai/codex@0.167.0`, then rerun `node install.mjs`, which also pins the daemon. |
 | A new model is missing from `/model` | Rerun the installer to rebuild the catalog, then restart Codex. |
 | OpenAI models are missing from `/model` | They are hidden without an active ChatGPT plan; install with `CODEX_ROUTER_NATIVE_MODELS=show` to list them anyway. |
 | Ultra Spark does not spawn workers | Select `ultra-spark-private/deepseek-v4.1-flash-1017` ("· Ultra Spark") or `ultra-spark/deepseek-v4.1-flash-1017` ("· Ultra Spark Contributor") in a new thread, and rerun the installer so the catalog carries the current policy. Small single-step tasks run without workers by design. |
