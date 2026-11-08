@@ -35,7 +35,7 @@ test('checked-in OpenRouter entries carry the rendered maintained prompts', () =
       checked += 1;
     }
   }
-  assert.equal(checked, 9);
+  assert.equal(checked, 10);
 });
 
 test('OpenRouter prompts never mention Codex tools that OpenRouter threads lack', () => {
@@ -95,6 +95,19 @@ test('Claude catalog entries match the model capabilities on each route', () => 
     assert.equal(entry.supports_parallel_tool_calls, parallel);
     assert.deepEqual(entry.input_modalities, ['text', 'image']);
   }
+});
+
+test('GPT-6.1 Sol on OpenRouter keeps its own name beside the native model', () => {
+  const sol = readEntry('gpt-sol-openrouter-model.json');
+  assert.equal(sol.slug, 'openrouter/openai/gpt-6.1-sol');
+  assert.equal(sol.display_name, 'GPT-6.1 Sol (OpenRouter)');
+  assert.equal(sol.visibility, 'list');
+  assert.equal(sol.context_window, 272000);
+  assert.equal(sol.max_context_window, 1050000);
+  // OpenRouter rejects `ultra`, which the native model offers.
+  assert.deepEqual(sol.supported_reasoning_levels.map(level => level.effort), ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(sol.default_reasoning_level, 'low');
+  assert.equal(sol.supports_search_tool, false);
 });
 
 test('Ultra Spark is DeepSeek with a delegation policy that keeps thread history away from workers', () => {
@@ -213,7 +226,7 @@ test('verify-catalog checks router entries against the repository and reports wh
   assert.equal(verify(catalogFile).status, 0, verify(catalogFile).stderr);
   const shown = verify('--report', catalogFile);
   assert.equal(shown.stdout, 'Router models: anthropic/claude-opus-5-5, anthropic/claude-sonnet-5-5, '
-    + `${deepseek.slug}, ${ultraSpark.slug}, ${ultraSparkPrivate.slug}, ${muse.slug}, ${museStandard.slug}\n`
+    + `${deepseek.slug}, ${ultraSpark.slug}, ${ultraSparkPrivate.slug}, openrouter/openai/gpt-6.1-sol, ${muse.slug}, ${museStandard.slug}\n`
     + 'Router models usable by name: openrouter/anthropic/claude-opus-5.5, openrouter/anthropic/claude-sonnet-5.5\n'
     + 'Native OpenAI models: 1 in /model (require a ChatGPT plan)\n');
   assert.equal(build('hide').status, 0);

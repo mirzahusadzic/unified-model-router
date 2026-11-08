@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { anthropicApiKey, envFile, fileEnvironment, logEvent, openrouterApiKey, persistJson } from './config.mjs';
 
-// Native OpenAI models and models that train on their inputs never share a
+// OpenAI models and models that train on their inputs never share a
 // Codex session. Spawned agents reuse their parent's session ID, so the rule
 // covers whole agent trees: OpenAI output never reaches a training tier, and
 // training-tier output never reaches OpenAI. Claude models are kept apart from
@@ -44,7 +44,7 @@ function loadSessionSides() {
 }
 // Sides other than `training` are protected from it; they may share a session.
 const sideNames = {
-  openai: 'a native OpenAI model',
+  openai: 'an OpenAI model',
   anthropic: 'a Claude model',
   private: 'the non-training tier',
   training: 'a model whose provider trains on its inputs',
@@ -56,6 +56,8 @@ export function sessionSide(requestedModel, provider, upstreamModel) {
   if (requestedModel.startsWith('ultra-spark-private/')) return 'private';
   if (requestedModel.startsWith('ultra-spark/') || trainingModels.has(upstreamModel)) return 'training';
   if (provider === 'anthropic' || upstreamModel.startsWith('anthropic/')) return 'anthropic';
+  // OpenAI's models on OpenRouter count with the native ones.
+  if (upstreamModel.startsWith('openai/')) return 'openai';
   return null;
 }
 
@@ -77,7 +79,7 @@ export function trainingDeclaration(requestedModel, provider, upstreamModel, { o
   return 'unknown';
 }
 
-// A session that used a native OpenAI or Claude model, or non-training Ultra
+// A session that used an OpenAI or Claude model, or non-training Ultra
 // Spark: its OpenRouter requests go only to endpoints that do not collect data
 // (see adaptForUpstream).
 export function protectedSession(sessionId) {
@@ -186,7 +188,7 @@ function forkedLeadCallIds(sessionId, input) {
   return new Set(callIdsIn(input).filter(id => ids.has(id))).size;
 }
 
-// The session rules, checked before anything is forwarded: native OpenAI and
+// The session rules, checked before anything is forwarded: OpenAI and
 // Claude models never share a session with the training tier, and a spawned
 // training-tier worker may not carry an Ultra Spark lead's forked history.
 // Returns the refusal to send, or null after recording what the request shows.

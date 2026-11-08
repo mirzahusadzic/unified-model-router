@@ -383,6 +383,8 @@ Start Codex with a model, or switch with /model:
     codex -m openrouter/meta/muse-spark-1.3
   Muse Spark 1.3 Contributor
     codex -m openrouter/meta/muse-spark-1.3-contributor
+  GPT-6.1 Sol (OpenRouter)
+    codex -m openrouter/openai/gpt-6.1-sol
   Claude Sonnet 5.5
     codex -m anthropic/claude-sonnet-5-5
   Claude Opus 5.5
@@ -401,7 +403,7 @@ if [[ "$native_models" == hide ]]; then
 fi
 # Hidden native models stay usable by name, so the warning covers them too.
 cat <<'EOF'
-Tracked Codex sessions never mix native OpenAI, Claude, or non-training
+Tracked Codex sessions never mix OpenAI, Claude, or non-training
 Ultra Spark models with Muse Spark 1.3 Contributor or Ultra Spark
 Contributor.
 EOF

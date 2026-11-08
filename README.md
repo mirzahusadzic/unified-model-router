@@ -11,7 +11,7 @@ A loopback-only Responses API router: local programs get one endpoint for OpenAI
 
 - **Claude on Anthropic's API:** With `ANTHROPIC_API_KEY`, Claude runs on the Messages API with prompt caching and signed thinking, and moves to OpenRouter if the key, credits or spend limit fail, unless the caller keeps it on Anthropic's API with `X-Codex-Router-Fallback: none` ([details](docs/routing.md#routing-policy)); without the key it runs on OpenRouter.
 - **Agent orchestration:** Ultra Spark lets DeepSeek coordinate up to 10 Muse Spark workers with `fork_context: false`, on endpoints that do not train, or on Meta's cheaper training tier as Ultra Spark Contributor.
-- **Privacy boundaries:** Training-tier sessions cannot mix with native OpenAI, Claude, or non-training Ultra Spark sessions, and after any of them a session reaches only the OpenRouter endpoints that OpenRouter's records count as not collecting data.
+- **Privacy boundaries:** Training-tier sessions cannot mix with OpenAI, Claude, or non-training Ultra Spark sessions, and after any of them a session reaches only the OpenRouter endpoints that OpenRouter's records count as not collecting data.
 - **Provider compatibility:** Repairs reasoning and tool history, handles DeepSeek JSON-mode structured output, normalizes problematic tool arguments, and never silently substitutes models.
 - **Resilient streaming:** Bounded recovery for OpenRouter and Anthropic, context-overflow signaling for Codex compaction, router diagnostics, and disconnect cancellation.
 - **Router-run web search:** Every model except native OpenAI ones searches through OpenRouter, and the results stay in the thread for later turns.
@@ -22,9 +22,9 @@ A loopback-only Responses API router: local programs get one endpoint for OpenAI
 
 ### How it works
 
-Codex talks to the router as one model provider. The router picks the upstream from the model slug, adapts each request to that provider, and streams the response back. Native OpenAI and Claude models never share a tracked Codex session with models the router declares training-tier, and protected requests reach only endpoints that OpenRouter's own records count as not collecting data; requests without a session ID are not tracked. [How routing works](docs/routing.md#routing-and-compatibility) has the details.
+Codex talks to the router as one model provider. The router picks the upstream from the model slug, adapts each request to that provider, and streams the response back. OpenAI and Claude models never share a tracked Codex session with models the router declares training-tier, and protected requests reach only endpoints that OpenRouter's own records count as not collecting data; requests without a session ID are not tracked. [How routing works](docs/routing.md#routing-and-compatibility) has the details.
 
-**Key:** 🟢 router · 🔵 OpenRouter, for DeepSeek, Ultra Spark, Muse and other models · 🟡 OpenRouter's endpoints · 🟠 Anthropic · ⚪ callers and OpenAI · 🔴 refused or excluded; dashed lines are conditional.
+**Key:** 🟢 router · 🔵 OpenRouter, for Sol, DeepSeek, Ultra Spark, Muse and other models · 🟡 OpenRouter's endpoints · 🟠 Anthropic · ⚪ callers and OpenAI · 🔴 refused or excluded; dashed lines are conditional.
 
 ```mermaid
 ---
@@ -97,7 +97,7 @@ flowchart TB
     CX -->|"Responses API"| RT
     TOP -->|"native models"| OA
     TOP -->|"anthropic/ with an Anthropic key"| AN
-    TOP -->|"DeepSeek, Ultra Spark, Muse and other models, web search, and Claude when the router has no Anthropic key; protected requests carry the deny policy"| ORB
+    TOP -->|"Sol, DeepSeek, Ultra Spark, Muse and other models, web search, and Claude when the router has no Anthropic key; protected requests carry the deny policy"| ORB
     TOP -.->|"Claude when Anthropic refuses the key, credits or a limit; never with Fallback:#160;none"| ORB
     TOP --x|"refused by isolation"| NO
     OR -.->|"only without deny"| CD
@@ -176,6 +176,7 @@ codex
 codex -m ultra-spark-private/deepseek-v4.1-flash-1017
 codex -m ultra-spark/deepseek-v4.1-flash-1017
 codex -m openrouter/meta/muse-spark-1.3-contributor
+codex -m openrouter/openai/gpt-6.1-sol
 codex -m anthropic/claude-sonnet-5-5
 codex -m anthropic/claude-opus-5-5
 ```
@@ -183,15 +184,16 @@ codex -m anthropic/claude-opus-5-5
 | Model | Best for |
 | --- | --- |
 | **DeepSeek V4.1 Flash 1017** (default) | Everyday agentic coding with a long context. [Details](docs/setup.md#deepseek-context-window) |
-| **DeepSeek · Ultra Spark** | Broad tasks such as reviews, audits, and changes across many files, on private code: no endpoint in its session trains on inputs. [Details](docs/setup.md#ultra-spark-mode) |
-| **DeepSeek · Ultra Spark Contributor** | The same on public code, cheaper, with workers on Meta's training tier. [Details](docs/setup.md#ultra-spark-contributor) |
+| **DeepSeek · Ultra Spark** | Strong for code audits, deep reviews, and changes across many files. No endpoint in its session trains on inputs, so it fits private code. [Details](docs/setup.md#ultra-spark-mode) |
+| **DeepSeek · Ultra Spark Contributor** | The same, but Meta trains on its workers' inputs, so it fits public code only; cheaper. [Details](docs/setup.md#ultra-spark-contributor) |
 | **Muse Spark 1.3** | Muse on private code: its endpoint does not train on inputs, at a higher price. [Details](docs/setup.md#muse-spark-13) |
 | **Muse Spark 1.3 Contributor** | Fast, inexpensive work on public code. [Details](docs/setup.md#muse-spark-13-contributor) |
+| **GPT-6.1 Sol (OpenRouter)** | Strong for text comprehension and rewriting at `xhigh`. Runs on OpenRouter credit, without a ChatGPT plan; the native model keeps its own name. [Details](docs/setup.md#gpt-61-sol) |
 | **Claude Sonnet 5.5 · Claude Opus 5.5** | Hard problems that need Anthropic's models; prompt caching keeps long threads affordable. Runs on Anthropic's API when you add `ANTHROPIC_API_KEY` to the [router settings](docs/setup.md#router-settings), otherwise on OpenRouter. [Details](docs/setup.md#claude-sonnet-55-and-claude-opus-55) |
 | **Any `openrouter/<vendor>/<model>`** | Trying another model; [add a catalog entry](docs/setup.md#add-a-model) to list it in `/model`. |
 | **Native OpenAI**, such as `gpt-6-astra` | Requires a ChatGPT plan. |
 
-Muse Spark 1.3 Contributor and Ultra Spark Contributor's workers use Meta's contributor tier, which trains on everything it receives, so use them only for code you are willing to share. DeepSeek's own endpoint may train on prompts too; after a native OpenAI or Claude model, or in a non-training Ultra Spark session, a session's OpenRouter requests go only to endpoints that keep no data, so pin DeepSeek to one to use it there. The router refuses to mix them with native OpenAI, Claude, or non-training Ultra Spark models in a tracked Codex session; requests without a session ID are not tracked ([details](docs/routing.md#provider-isolation)).
+Muse Spark 1.3 Contributor and Ultra Spark Contributor's workers use Meta's contributor tier, which trains on everything it receives, so use them only for code you are willing to share. DeepSeek's own endpoint may train on prompts too; after an OpenAI or Claude model, or in a non-training Ultra Spark session, a session's OpenRouter requests go only to endpoints that keep no data, so pin DeepSeek to one to use it there. The router refuses to mix them with OpenAI, Claude, or non-training Ultra Spark models in a tracked Codex session; requests without a session ID are not tracked ([details](docs/routing.md#provider-isolation)).
 
 Without a ChatGPT login, add `--profile unified-openrouter` to any of the commands above, Ultra Spark included ([details](docs/setup.md#openrouter-only-profile)). To prefer specific OpenRouter endpoints, set [`CODEX_ROUTER_PROVIDER_ORDER`](docs/setup.md#openrouter-endpoint-preferences).
 

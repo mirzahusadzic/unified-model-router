@@ -170,7 +170,7 @@ How the value is read and applied:
 
 - **Key:** The upstream model slug, without the `openrouter/` prefix; both Ultra Spark entries share DeepSeek's key
 - **Value:** Endpoint tags from `https://openrouter.ai/api/v1/models/<model>/endpoints`, separated by commas; separate models with `;`
-- **Request:** `provider: { order: [...] }`, added only when the request has no `provider` field; after a native OpenAI or Claude model, or in a non-training Ultra Spark session, with `data_collection: "deny"` beside it. The router's own web searches follow the same order for their model.
+- **Request:** `provider: { order: [...] }`, added only when the request has no `provider` field; after an OpenAI or Claude model, or in a non-training Ultra Spark session, with `data_collection: "deny"` beside it. The router's own web searches follow the same order for their model.
 - **Fallbacks:** Stay enabled, so an outage of the preferred endpoint costs a cache miss instead of failing the turn; OpenRouter's own sticky routing does not apply while an order is set
 - **Errors:** A malformed value stops the router at startup; `request.forwarded` logs the applied `providerOrder`
 
@@ -321,6 +321,7 @@ codex --profile unified-openrouter \
 | **DeepSeek V4.1 Flash 1017 · Ultra Spark Contributor** | `ultra-spark/deepseek-v4.1-flash-1017` | 960,000 tokens | Delegates to Muse Contributor workers; see [Ultra Spark Contributor](#ultra-spark-contributor) |
 | **Muse Spark 1.3** | `openrouter/meta/muse-spark-1.3` | 1,048,576 tokens | Its endpoint does not train on its inputs; see [Muse Spark 1.3](#muse-spark-13) |
 | **Muse Spark 1.3 Contributor** | `openrouter/meta/muse-spark-1.3-contributor` | 1,048,576 tokens | Meta trains on its inputs; see [Muse Spark 1.3 Contributor](#muse-spark-13-contributor) |
+| **GPT-6.1 Sol (OpenRouter)** | `openrouter/openai/gpt-6.1-sol` | 272,000 tokens | Billed to OpenRouter credit, beside the native model; see [GPT-6.1 Sol](#gpt-61-sol) |
 | **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Sonnet 5.5 and Claude Opus 5.5](#claude-sonnet-55-and-claude-opus-55) |
 | **Claude Opus 5.5** | `anthropic/claude-opus-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet |
 | Native OpenAI models | for example `gpt-6-astra` | bundled limits | Require a ChatGPT plan |
@@ -346,7 +347,7 @@ codex -m deepseek/deepseek-v4.1-flash-1017
 | `auto_compact_token_limit` | `null` | No explicit compaction threshold supplied by the catalog. |
 
 - **The budget** covers the whole conversation context, including instructions, messages, and tool results; it is not a maximum output length. These are the project's configured limits, not a live measurement of upstream capacity, and native OpenAI models keep their bundled limits.
-- **After a native OpenAI or Claude model:** DeepSeek runs only on an endpoint that does not collect data, such as one you pin with `CODEX_ROUTER_PROVIDER_ORDER`.
+- **After an OpenAI or Claude model:** DeepSeek runs only on an endpoint that does not collect data, such as one you pin with `CODEX_ROUTER_PROVIDER_ORDER`.
 
 #### Muse Spark 1.3
 
@@ -368,6 +369,16 @@ codex -m openrouter/meta/muse-spark-1.3-contributor
 > This is Meta's contributor tier, cheaper because Meta uses prompts and completions to improve its products, and Codex sends file contents and command output with each step. Use it only for code you are willing to share, such as public repositories.
 
 OpenRouter routes to it only after you allow endpoints that may train on inputs in your OpenRouter privacy settings.
+
+#### GPT-6.1 Sol
+
+[`catalog/gpt-sol-openrouter-model.json`](../catalog/gpt-sol-openrouter-model.json) adds `openrouter/openai/gpt-6.1-sol`, separate from the native `gpt-6.1-sol`: the prefix sends it to OpenRouter, on OpenRouter credit, and the native name keeps going to the Codex backend. Its context starts at the native default of 272,000 tokens, up to OpenRouter's 1,050,000; the entry offers `low` through `max` (default `low`), since OpenRouter rejects `ultra`, and declares no parallel tool calls.
+
+```sh
+codex -m openrouter/openai/gpt-6.1-sol
+```
+
+A session that uses it counts as an OpenAI session: it stays off the training tier and its OpenRouter requests carry `provider.data_collection: "deny"`. An OpenRouter guardrail that blocks the model or OpenAI ends each request in a router diagnostic until you allow them.
 
 #### Claude Sonnet 5.5 and Claude Opus 5.5
 
@@ -396,7 +407,7 @@ codex -m ultra-spark-private/deepseek-v4.1-flash-1017
 - **Workers:** it splits broad tasks such as reviews across parallel Muse Spark 1.3 workers, up to 10 at once, and hands them chores such as code searches, test runs, and mechanical edits through Codex's `spawn_agent` tool. Workers are spawned with `fork_context: false`, so they see only their task.
 - **The lead:** design decisions, final edits, and verification stay in the DeepSeek thread; the default reasoning effort is `max`.
 - **No training:** from its first request, with or without a session ID, every OpenRouter request in its session, the router's searches included, carries `provider.data_collection: "deny"`. DeepSeek then runs on an endpoint that does not collect data instead of DeepSeek's own, so your OpenRouter settings must allow one, such as Fireworks.
-- **Isolation:** the router refuses the training tier in its session, so a worker spawned on Muse Spark 1.3 Contributor gets HTTP 409. It may share a session with native OpenAI and Claude models.
+- **Isolation:** the router refuses the training tier in its session, so a worker spawned on Muse Spark 1.3 Contributor gets HTTP 409. It may share a session with OpenAI and Claude models.
 - **Cost:** Muse Spark 1.3 workers cost more than Contributor workers.
 
 #### Ultra Spark Contributor

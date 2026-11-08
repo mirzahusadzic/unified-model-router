@@ -215,7 +215,7 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, { prot
     adaptation.providerOrder = providerOrders.get(upstreamModel);
     request.provider = { order: adaptation.providerOrder };
   }
-  // After a native OpenAI or Claude model, a session reaches only endpoints
+  // After an OpenAI or Claude model, a session reaches only endpoints
   // that do not collect data, so their output never goes where it may be
   // trained on. A model pinned to such an endpoint still runs there; DeepSeek's
   // own endpoint, which may train on prompts, does not qualify. A caller's own

@@ -512,11 +512,37 @@ test('Claude and training-tier models never share a session; Claude may share on
   // A session that began on OpenAI may add Claude and still refuses Muse.
   await send({ model: 'gpt-6-astra', input: 'Hello' }, inSession('isolation-openai-claude'));
   await send({ model: claude, input: 'Hello' }, inSession('isolation-openai-claude'));
-  await refused('openrouter/meta/muse-spark-1.3-contributor', 'isolation-openai-claude', /native OpenAI model/);
+  await refused('openrouter/meta/muse-spark-1.3-contributor', 'isolation-openai-claude', /an OpenAI model/);
 
   const sides = JSON.parse(readFileSync(join(routerHome, 'session-sides.json'), 'utf8'));
   assert.equal(sides['isolation-claude'].side, 'anthropic');
   assert.equal(sides['isolation-openai-claude'].side, 'openai');
+});
+
+test('OpenAI models on OpenRouter stay apart from the training tier, as the native ones do', async () => {
+  const inSession = id => ({ 'session-id': id });
+  const sol = 'openrouter/openai/gpt-6.1-sol';
+  const refused = async (model, id, message) => {
+    const count = forwarded.length;
+    const result = await exchange(JSON.stringify({ model, input: 'Hello' }), inSession(id));
+    assert.equal(result.status, 409, model);
+    assert.equal(result.body.error.code, 'provider_isolation');
+    assert.match(result.body.error.message, message);
+    assert.equal(forwarded.length, count);
+  };
+  // The prefix decides the route, so the native model of the same name is untouched.
+  const onOpenRouter = await send({ model: sol, input: 'Hello' }, inSession('isolation-sol'));
+  assert.equal(onOpenRouter.hostname, 'openrouter.ai');
+  assert.equal(onOpenRouter.body.model, 'openai/gpt-6.1-sol');
+  assert.equal(onOpenRouter.body.provider.data_collection, 'deny');
+  const native = await send({ model: 'gpt-6.1-sol', input: 'Hello' }, inSession('isolation-sol'));
+  assert.equal(native.hostname, 'chatgpt.com');
+  assert.equal(native.body.model, 'gpt-6.1-sol');
+  for (const model of ['openrouter/meta/muse-spark-1.3-contributor', 'ultra-spark/deepseek-v4.1-flash-1017']) {
+    await refused(model, 'isolation-sol', /already used an OpenAI model/);
+  }
+  await send({ model: 'ultra-spark/deepseek-v4.1-flash-1017', input: 'Hello' }, inSession('isolation-sol-training'));
+  await refused(sol, 'isolation-sol-training', /Start a new thread to use an OpenAI model/);
 });
 
 test('non-training Ultra Spark keeps its whole session off collecting endpoints and away from the training tier', async () => {
@@ -1576,6 +1602,7 @@ test('the model list declares each model\'s training by its weakest route, and h
     'deepseek/deepseek-v4.1-flash-1017': 'endpoint',
     'openrouter/meta/muse-spark-1.3': 'endpoint',
     'openrouter/anthropic/claude-sonnet-5.5': 'endpoint',
+    'openrouter/openai/gpt-6.1-sol': 'endpoint',
     // With an OpenRouter key, a refusal can move Claude there.
     'anthropic/claude-sonnet-5-5': 'endpoint',
   };

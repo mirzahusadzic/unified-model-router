@@ -185,7 +185,7 @@ logs | jq -c 'select(.event == "web_search.executed")
 | --- | --- |
 | Why was a step rejected? | `openrouter.request_rejected`: a pre-stream 400 from OpenRouter or Anthropic's API (`provider`), with payload hash, input count, generation and request identifiers, `contextOverflow`, and the response body's hash, never the body |
 | What did the retry send? | `openrouter.recovery_attempt`: payload hash, compaction strategy, counts of retained, dropped, and dropped encrypted-reasoning items, and `omissionNotice` |
-| Why did Codex get a diagnostic instead of an answer? | `openrouter.fallback_completion`: the retry failed too; `openrouter.refused`: HTTP 401, 402, 403, or 404, with `dataPolicy` true when, after a native OpenAI or Claude model, no endpoint that does not collect data was available |
+| Why did Codex get a diagnostic instead of an answer? | `openrouter.fallback_completion`: the retry failed too; `openrouter.refused`: HTTP 401, 402, 403, or 404, with `dataPolicy` true when, after an OpenAI or Claude model, no endpoint that does not collect data was available |
 | Why is a captured body missing? | `openrouter.rejection_capture_failed`: it could not be written; `openrouter.rejection_capture_refused`: its Windows location is not the private router directory |
 
 ```sh
@@ -362,7 +362,7 @@ cp -p "$backup_dir/models.json" "$HOME/.codex/models.json"
 | OpenAI models are missing from `/model` | They are hidden without an active ChatGPT plan; install with `CODEX_ROUTER_NATIVE_MODELS=show` to list them anyway. |
 | Ultra Spark does not spawn workers | Select `ultra-spark-private/deepseek-v4.1-flash-1017` ("· Ultra Spark") or `ultra-spark/deepseek-v4.1-flash-1017` ("· Ultra Spark Contributor") in a new thread, and rerun the installer so the catalog carries the current policy. Small single-step tasks run without workers by design. |
 | HTTP 409 `data_policy` | The request sent `X-Codex-Router-Data-Policy: deny` with a training-tier model; choose a model outside the training tier. |
-| HTTP 409 `provider_isolation` | The session already used the other side: native OpenAI, Claude, or Ultra Spark, or the training tier, such as Muse Spark 1.3 Contributor or Ultra Spark Contributor. Start a new thread; see [Provider isolation](routing.md#provider-isolation). |
+| HTTP 409 `provider_isolation` | The session already used the other side: OpenAI, Claude, or Ultra Spark, or the training tier, such as Muse Spark 1.3 Contributor or Ultra Spark Contributor. Start a new thread; see [Provider isolation](routing.md#provider-isolation). |
 | Muse requests fail before reaching a model | Allow endpoints that may train on inputs in your OpenRouter privacy settings, and check that OpenRouter guardrails allow the Muse provider. |
 | A thread still uses the previous provider | [Activate the unified provider](setup.md#activate-the-provider) and start a new thread. |
 | The local endpoint is unavailable | Check the service status and the router's error log. |
