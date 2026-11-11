@@ -144,50 +144,79 @@ export function claudeRoute(sessionId, { fallback = true } = {}) {
 
 // A Claude thread's effort changes, so a change can go into the conversation
 // instead of the top-level effort, which would restart the prompt cache. Each
-// record lists [user message count, effort] pairs: the effort the thread
-// started with, then each change at the count of Codex user messages its
-// request held. The history is append-only, so every later request can place
-// the same changes at the same messages. Records are kept per thread, since
+// record lists [user message count, effort, fingerprint] triples: the effort
+// the thread started with, then each change at the count of Codex user
+// messages its request held. The fingerprint is a SHA-256 over those user
+// messages, not their text, so a change is placed again only while the
+// history still holds the same messages. Records are kept per thread, since
 // spawned agents share their parent's session ID, and follow the isolation
 // records' retention.
 const claudeEffortsFile = join(dirname(envFile), 'claude-efforts.json');
-const claudeEfforts = loadClaudeEfforts();
+const effortNames = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 const maxEffortChanges = 64;
+const isEffortRecord = record => Array.isArray(record) && Number.isInteger(record[0]) && record[0] > 0
+  && effortNames.has(record[1]) && typeof record[2] === 'string' && /^[0-9a-f]{64}$/.test(record[2]);
+const claudeEfforts = loadClaudeEfforts();
 
 function loadClaudeEfforts() {
   try {
     const stored = JSON.parse(readFileSync(claudeEffortsFile, 'utf8'));
     const cutoff = Date.now() - sessionSideRetentionMs;
     return new Map(Object.entries(stored).filter(([, entry]) => entry?.at > cutoff && Array.isArray(entry.efforts)
-      && entry.efforts.length > 0 && entry.efforts.every(pair => Array.isArray(pair) && Number.isInteger(pair[0])
-        && pair[0] > 0 && typeof pair[1] === 'string')));
+      && entry.efforts.length > 0 && entry.efforts.length <= maxEffortChanges && entry.efforts.every(isEffortRecord)));
   } catch (error) {
     if (error.code !== 'ENOENT') logEvent('error', 'claude.efforts_load_failed', { errorCode: error.code || null });
     return new Map();
   }
 }
 
-// Records this request's effort for its thread and returns the thread's
-// [user message count, effort] pairs, the first being the thread's starting
-// effort. A history shorter than a recorded change, after compaction or a
-// rewind, drops that change; a second effort for the same user message
-// replaces the first.
-export function claudeEffortChanges(thread, userMessages, effort) {
-  if (!thread || !Number.isInteger(userMessages) || userMessages < 1 || typeof effort !== 'string') return null;
+// Records this request's effort for its thread and returns the triples that
+// apply to it, the first being the effort the thread's history started with.
+// `fingerprints` holds one fingerprint per user message in the request, each
+// over the messages up to it. A triple applies while the request still holds
+// the messages it was recorded at. One that no longer matches, after
+// compaction or a rewind, ends the record there, and with no triple left the
+// record starts again at the current effort, at the top level. Triples past
+// the end of a shorter history stay, unapplied, for a request that resends an
+// older part of the thread. A second effort for the same user message
+// replaces the first, and past the cap the record starts again. Efforts
+// outside Codex's names are passed on unrecorded.
+export function claudeEffortChanges(thread, fingerprints, effort) {
+  if (!thread || !Array.isArray(fingerprints) || fingerprints.length < 1 || !effortNames.has(effort)) return null;
+  const userMessages = fingerprints.length;
   const recorded = current(claudeEfforts.get(thread));
-  const efforts = (recorded?.efforts ?? []).filter(([count]) => count <= userMessages);
-  const last = efforts.at(-1);
-  if (!last) efforts.push([userMessages, effort]);
-  else if (last[1] !== effort) {
-    if (last[0] === userMessages) efforts.pop();
-    if (efforts.at(-1)?.[1] !== effort) efforts.push([userMessages, effort]);
+  const stored = recorded?.efforts ?? [];
+  let efforts = [];
+  let later = [];
+  for (const [index, record] of stored.entries()) {
+    if (record[0] > userMessages) {
+      later = stored.slice(index);
+      break;
+    }
+    if (record[2] !== fingerprints[record[0] - 1]) break;
+    efforts.push(record);
   }
-  while (efforts.length > maxEffortChanges) efforts.splice(1, 1);
-  const unchanged = recorded && JSON.stringify(recorded.efforts) === JSON.stringify(efforts);
+  const here = [userMessages, effort, fingerprints[userMessages - 1]];
+  const last = efforts.at(-1);
+  if (!last) {
+    // A request older than the thread's first: it goes out as sent.
+    if (later.length > 0) return null;
+    efforts = [here];
+  } else if (last[1] !== effort) {
+    if (last[0] === userMessages) efforts.pop();
+    if (efforts.at(-1)?.[1] !== effort) efforts.push(here);
+    later = [];
+  }
+  if (efforts.length > maxEffortChanges) {
+    efforts = [here];
+    later = [];
+  }
+  const record = [...efforts, ...later];
+  const unchanged = recorded && JSON.stringify(recorded.efforts) === JSON.stringify(record);
   if (!unchanged || Date.now() - recorded.at >= sessionSideRefreshMs) {
     const cutoff = Date.now() - sessionSideRetentionMs;
     for (const [id, entry] of claudeEfforts) if (entry.at <= cutoff) claudeEfforts.delete(id);
-    claudeEfforts.set(thread, { efforts, at: Date.now() });
+    claudeEfforts.set(thread, { efforts: record, at: Date.now() });
     persistJson(claudeEffortsFile, Object.fromEntries(claudeEfforts), 'claude.efforts_persist_failed');
   }
   return efforts;

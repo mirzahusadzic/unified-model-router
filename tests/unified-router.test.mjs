@@ -2433,14 +2433,21 @@ test('Codex changes Claude\'s effort mid-thread on Anthropic\'s API without chan
   ]);
   assert.equal(fourth.body.messages.filter(message => message.role === 'system').length, 2);
 
-  // A shorter history, after compaction or a rewind, drops the changes past its end.
-  // A second effort for the same user message replaces the first.
+  // After compaction the history no longer holds the messages the changes were made at, though it has
+  // as many user messages, so the thread starts again at the current effort, at the top level.
   const compacted = await send(effortRequest(model, 'max', [userText('Summary.'), userText('Continue.'), userText('More.')]), thread);
-  assert.deepEqual(compacted.body.output_config, { effort: 'high' });
+  assert.deepEqual(compacted.body.output_config, { effort: 'max' });
   assert.deepEqual(compacted.body.messages, [
-    { role: 'user', content: [{ type: 'text', text: 'Summary.' }, { type: 'text', text: 'Continue.' }] },
-    { role: 'system', content: [], output_config: { effort: 'max' } },
-    { role: 'user', content: [{ type: 'text', text: 'More.' }] },
+    { role: 'user', content: [{ type: 'text', text: 'Summary.' }, { type: 'text', text: 'Continue.' }, { type: 'text', text: 'More.' }] },
+  ]);
+  assert.equal(compacted.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01');
+  // The compacted thread's next change goes in as before.
+  const resumed = await send(effortRequest(model, 'low', [userText('Summary.'), userText('Continue.'), userText('More.'),
+    assistantText('Done.'), userText('Next.')]), thread);
+  assert.deepEqual(resumed.body.output_config, { effort: 'max' });
+  assert.deepEqual(resumed.body.messages.slice(-2), [
+    { role: 'system', content: [], output_config: { effort: 'low' } },
+    { role: 'user', content: [{ type: 'text', text: 'Next.' }] },
   ]);
 });
 
@@ -2509,6 +2516,83 @@ test('a rejected Claude step with effort updates is retried with the current eff
   assert.ok(forwarded.at(-2).body.input.some(item => item.type === 'configuration_update'));
   assert.deepEqual(forwarded.at(-1).body.reasoning, { effort: 'low', summary: 'auto' });
   assert.deepEqual(forwarded.at(-1).body.input, turns);
+});
+
+test('Claude\'s effort records hold through a late request, a rewind, and long threads, and keep what no Codex request sends', async t => {
+  const model = 'openrouter/anthropic/claude-fable-5.2';
+  const updates = body => body.input.filter(item => item.type === 'configuration_update');
+  // A late request with an older part of the thread leaves the newer change in place.
+  const late = inClaudeSession('effort-late');
+  const history = [userText('One.'), assistantText('A.'), userText('Two.'), assistantText('B.'), userText('Three.')];
+  await send(effortRequest(model, 'high', history.slice(0, 1)), late);
+  await send(effortRequest(model, 'low', history.slice(0, 3)), late);
+  const older = await send(effortRequest(model, 'high', history.slice(0, 1)), late);
+  assert.deepEqual(older.body.reasoning, { effort: 'high', summary: 'auto' });
+  const next = await send(effortRequest(model, 'low', history), late);
+  assert.deepEqual(next.body.input.slice(0, 4), [...history.slice(0, 2), { type: 'configuration_update', reasoning: { effort: 'low' } }, history[2]]);
+  assert.equal(updates(next.body).length, 1);
+
+  // A rewind replaces a message, so its change goes before the new one.
+  const rewound = await send(effortRequest(model, 'low', [...history.slice(0, 2), userText('Two, again.')]), late);
+  assert.deepEqual(rewound.body.input, [...history.slice(0, 2), { type: 'configuration_update', reasoning: { effort: 'low' } }, userText('Two, again.')]);
+
+  // Past 64 records a thread starts again at the current effort rather than lose one from the middle.
+  const long = inClaudeSession('effort-long');
+  let input = [userText('Turn 0.')];
+  let previous = (await send(effortRequest(model, 'high', input), long)).body;
+  let restarted = false;
+  for (let turn = 1; turn <= 66; turn += 1) {
+    input = [...input, assistantText(`Reply ${turn}.`), userText(`Turn ${turn}.`)];
+    const effort = turn % 2 ? 'low' : 'high';
+    const { body } = await send(effortRequest(model, effort, input), long);
+    const extends_ = body.reasoning.effort === previous.reasoning.effort
+      && JSON.stringify(body.input.slice(0, previous.input.length)) === JSON.stringify(previous.input);
+    if (!extends_) {
+      assert.equal(restarted, false, `turn ${turn}: a second restart`);
+      assert.deepEqual(body.reasoning, { effort, summary: 'auto' }, `turn ${turn}`);
+      assert.equal(updates(body).length, 0, `turn ${turn}`);
+      restarted = true;
+    }
+    previous = body;
+  }
+  assert.ok(restarted);
+
+  // An effort outside Codex's names is passed on but never recorded.
+  const odd = inClaudeSession('effort-odd');
+  await send(effortRequest(model, 'high', history.slice(0, 1)), odd);
+  const unnamed = await send(effortRequest(model, 'x'.repeat(4096), history.slice(0, 3)), odd);
+  assert.equal(unnamed.body.reasoning.effort, 'x'.repeat(4096));
+  assert.equal(updates(unnamed.body).length, 0);
+  const named = await send(effortRequest(model, 'high', history), odd);
+  assert.deepEqual(named.body.input, history);
+
+  // A thread ID without a session ID keeps no record, as for a request with neither.
+  const sessionless = { 'thread-id': 'effort-thread-only' };
+  await send(effortRequest(model, 'high', history.slice(0, 1)), sessionless);
+  const changed = await send(effortRequest(model, 'low', history.slice(0, 3)), sessionless);
+  assert.deepEqual(changed.body.reasoning, { effort: 'low', summary: 'auto' });
+  assert.deepEqual(changed.body.input, history.slice(0, 3));
+});
+
+test('a retry after a rejected Claude step drops a caller\'s malformed effort items and logs no updates', async t => {
+  const model = 'openrouter/anthropic/claude-fable-5.2';
+  const turns = [userText('Plan.'), assistantText('Planned.'), userText('Go on.')];
+  const thread = inClaudeSession('effort-retry-log');
+  await send(effortRequest(model, 'high', turns.slice(0, 1)), thread);
+  const rejected = { status: 400, body: JSON.stringify({ error: { message: 'invalid request', code: 400 } }) };
+  const completed = { status: 200, contentType: 'text/event-stream',
+    body: 'data: {"type":"response.completed","response":{"id":"resp_retry","end_turn":true}}\n\n' };
+  mockUpstreamSequence(t, Array.from({ length: 4 }, () => [rejected, completed]).flat());
+  for (const malformed of [{ type: 'configuration_update' }, { type: 'configuration_update', reasoning: null },
+    { type: 'configuration_update', reasoning: {} }]) {
+    const result = await exchangeRaw(JSON.stringify(effortRequest(model, 'medium', [turns[0], malformed, ...turns.slice(1)])));
+    assert.equal(result.status, 200, JSON.stringify(malformed));
+    assert.deepEqual(forwarded.at(-1).body.reasoning, { effort: 'medium', summary: 'auto' });
+    assert.deepEqual(forwarded.at(-1).body.input, turns);
+  }
+  await exchangeRaw(JSON.stringify(effortRequest(model, 'low', turns)), thread);
+  const attempts = parsedLogEntries().filter(entry => entry.event === 'request.forwarded' && entry.sessionId === 'effort-retry-log').slice(-2);
+  assert.deepEqual(attempts.map(entry => [entry.attempt, entry.effortUpdates]), [[1, 1], [2, 0]]);
 });
 
 test('Claude\'s progress notes between tool calls reach Codex as reasoning summaries on both routes', async t => {

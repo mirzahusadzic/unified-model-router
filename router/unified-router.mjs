@@ -220,6 +220,8 @@ const server = http.createServer((request, response) => {
   // Codex 0.163 sends `thread-id`; earlier versions sent `conversation_id`.
   const suppliedThreadId = request.headers['thread-id'] ?? request.headers.conversation_id;
   const threadId = typeof suppliedThreadId === 'string' && suppliedThreadId.length <= 256 ? suppliedThreadId : null;
+  // Claude's effort records need a session, as the docs promise; a thread ID alone opts into none.
+  const effortThread = requestInfo.sessionId ? (threadId ?? requestInfo.sessionId) : null;
   let clientClosed = false;
   let upstreamFailed = false;
   response.once('finish', () => {
@@ -451,7 +453,7 @@ const server = http.createServer((request, response) => {
     let {
       stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch, effortUpdates,
     } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, {
-      protectedSession: sessionProtected, promptCache, endpoints, thread: threadId ?? requestInfo.sessionId, thinkingBudget,
+      protectedSession: sessionProtected, promptCache, endpoints, thread: effortThread, thinkingBudget,
     });
     let structuredOutputAdapted = Boolean(structuredOutputInstruction);
     parsed.model = upstreamModel;
@@ -482,7 +484,7 @@ const server = http.createServer((request, response) => {
       ({
         stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch, effortUpdates,
       } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, {
-        protectedSession: sessionProtected, promptCache, endpoints, thread: threadId ?? requestInfo.sessionId, thinkingBudget,
+        protectedSession: sessionProtected, promptCache, endpoints, thread: effortThread, thinkingBudget,
       }));
       structuredOutputAdapted = Boolean(structuredOutputInstruction);
       parsed.model = upstreamModel;
@@ -624,7 +626,8 @@ const server = http.createServer((request, response) => {
         requestedModel,
         structuredOutputAdapted,
         promptCachingAdded,
-        effortUpdates,
+        // A retry drops the effort updates (prepareOpenRouterRecovery).
+        effortUpdates: recovery ? 0 : effortUpdates,
         promptCache: promptCache || 'default',
         requestDataPolicy: requestDataPolicy || 'default',
         fallback: claudeFallback ? 'default' : 'none',

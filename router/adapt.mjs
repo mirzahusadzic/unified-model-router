@@ -1,5 +1,6 @@
 // Shaping a request for its upstream, and the bounded retry after a rejected
 // step.
+import { createHash } from 'node:crypto';
 import { claudeEffort, hasSystemPrompt, isAnthropicThinking } from './anthropic.mjs';
 import { openrouterApiKey, providerOrders } from './config.mjs';
 import { claudeEffortChanges } from './sessions.mjs';
@@ -64,18 +65,26 @@ const effortUpdateModels = {
 // becomes a configuration_update item just before the user message whose
 // request first carried it. Later requests place the same items again, so
 // the history stays a prefix of the next and the prompt cache holds. A
-// thread whose effort never changed goes out unchanged. Returns the number
-// of items added.
+// thread whose effort never changed goes out unchanged, and so does a
+// history that no longer holds the messages a change was made at, after
+// compaction or a rewind, with the current effort at the top level. Returns
+// the number of items added.
 function addEffortUpdates(request, provider, upstreamModel, thread, { thinkingBudget = null } = {}) {
   if (!effortUpdateModels[provider]?.has(upstreamModel) || thinkingBudget || !Array.isArray(request.input)) return 0;
   const isUser = item => isMessageForRole(item, 'user');
-  const userMessages = request.input.filter(isUser).length;
+  // One fingerprint per user message, each over the user messages up to it.
+  const fingerprints = [];
+  for (const item of request.input) {
+    if (!isUser(item)) continue;
+    fingerprints.push(createHash('sha256').update(fingerprints.at(-1) ?? '').update(JSON.stringify(item)).digest('hex'));
+  }
   // On Anthropic's API, the effort Claude runs: `none` and `minimal` are its `low`,
   // so moving between them is no change, and an effort Claude lacks keeps today's request.
   const effort = provider === 'anthropic' ? claudeEffort(request.reasoning?.effort) : request.reasoning?.effort;
-  const efforts = claudeEffortChanges(thread, userMessages, effort);
+  const efforts = claudeEffortChanges(thread, fingerprints, effort);
+  // A single triple is the request's own effort, so it goes out as sent.
   if (!efforts || efforts.length < 2) return 0;
-  const changes = new Map(efforts.slice(1));
+  const changes = new Map(efforts.slice(1).map(([count, value]) => [count, value]));
   const input = [];
   let count = 0;
   for (const item of request.input) {
@@ -91,14 +100,16 @@ function addEffortUpdates(request, provider, upstreamModel, thread, { thinkingBu
 }
 
 // A retry with trimmed history restarts the cache anyway, so it sets the
-// current effort at the top level again, without the update items.
+// current effort at the top level again, without the update items. An item
+// without an effort, which only another caller could send, sets none.
 function withoutEffortUpdates(request) {
   if (!Array.isArray(request.input)) return request;
   const updates = request.input.filter(item => item?.type === 'configuration_update');
   if (updates.length === 0) return request;
+  const effort = updates.map(item => item.reasoning?.effort).filter(value => typeof value === 'string' && value).at(-1);
   return {
     ...request,
-    reasoning: { ...request.reasoning, effort: updates.at(-1).reasoning.effort },
+    ...(effort ? { reasoning: { ...request.reasoning, effort } } : {}),
     input: request.input.filter(item => item?.type !== 'configuration_update'),
   };
 }
