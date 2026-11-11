@@ -324,7 +324,7 @@ codex --profile unified-openrouter \
 | **GPT-6.1 Sol (OpenRouter)** | `openrouter/openai/gpt-6.1-sol` | 272,000 tokens | Billed to OpenRouter credit, beside the native model; see [GPT-6.1 Sol](#gpt-61-sol) |
 | **Claude Fable 5.2** | `anthropic/claude-fable-5-2` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet; see [Claude Fable 5.2](#claude-fable-52) |
 | **Claude Opus 5.5** | `anthropic/claude-opus-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet |
-| **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Sonnet 5.5, Opus 5.5 and Fable 5.2](#claude-sonnet-55-opus-55-and-fable-52) |
+| **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Fable 5.2, Opus 5.5 and Sonnet 5.5](#claude-fable-52-opus-55-and-sonnet-55) |
 | Native OpenAI models | for example `gpt-6-astra` | bundled limits | Require a ChatGPT plan |
 
 #### DeepSeek context window
@@ -381,15 +381,15 @@ codex -m openrouter/openai/gpt-6.1-sol
 
 A session that uses it counts as an OpenAI session: it stays off the training tier and its OpenRouter requests carry `provider.data_collection: "deny"`. An OpenRouter guardrail that blocks the model or OpenAI ends each request in a router diagnostic until you allow them.
 
-#### Claude Sonnet 5.5, Opus 5.5 and Fable 5.2
+#### Claude Fable 5.2, Opus 5.5 and Sonnet 5.5
 
 [`catalog/anthropic/sonnet.json`](../catalog/anthropic/sonnet.json) and [`catalog/anthropic/opus.json`](../catalog/anthropic/opus.json) add `anthropic/claude-sonnet-5-5` and `anthropic/claude-opus-5-5` with a **1,000,000-token** context and a 95% effective budget. Thinking cannot be turned off, so the entries offer `low` through `max` (default `medium`) and no `none`.
 
 With `ANTHROPIC_API_KEY` in the [router settings](#router-settings), Claude runs on Anthropic's API; without it, Claude runs on OpenRouter's copy of the same model. Both routes charge the same per-token prices, but credits from a Claude plan work only on Anthropic's API, and only there does Claude's signed thinking carry from step to step. A thread keeps the route it started on, and moves to OpenRouter if Anthropic refuses the key, the credits, a spend limit, or the model; see [Claude's two routes](routing.md#claudes-two-routes).
 
 ```sh
-codex -m anthropic/claude-sonnet-5-5
 codex -m anthropic/claude-opus-5-5
+codex -m anthropic/claude-sonnet-5-5
 ```
 
 - **Reasoning effort:** `codex -m` keeps your configured effort, `xhigh` from the installer; to spend less, pick a lower one with `/model` or `-c model_reasoning_effort=medium`. On Anthropic's API, `none` and `minimal` become `low`.
