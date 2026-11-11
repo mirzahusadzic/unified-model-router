@@ -329,7 +329,7 @@ codex --profile unified-openrouter \
 
 #### DeepSeek context window
 
-[`catalog/deepseek-model.json`](../catalog/deepseek-model.json) preconfigures `deepseek/deepseek-v4.1-flash-1017`. The installer merges it into `models.json` and points `model_catalog_json` at it, so no manual context setting is needed.
+[`catalog/deepseek/deepseek.json`](../catalog/deepseek/deepseek.json) preconfigures `deepseek/deepseek-v4.1-flash-1017`. The installer merges it into `models.json` and points `model_catalog_json` at it, so no manual context setting is needed.
 
 It is the default model; to select it in a thread that runs another one:
 
@@ -352,7 +352,7 @@ codex -m deepseek/deepseek-v4.1-flash-1017
 
 #### Muse Spark 1.3
 
-[`catalog/muse-standard-model.json`](../catalog/muse-standard-model.json) adds `openrouter/meta/muse-spark-1.3`, the same model and settings as the Contributor entry below, outside Meta's contributor tier. OpenRouter lists its endpoint as one that does not train on inputs, so it also runs in sessions that used a native OpenAI or Claude model; it costs more than the Contributor tier.
+[`catalog/meta/muse-standard.json`](../catalog/meta/muse-standard.json) adds `openrouter/meta/muse-spark-1.3`, the same model and settings as the Contributor entry below, outside Meta's contributor tier. OpenRouter lists its endpoint as one that does not train on inputs, so it also runs in sessions that used a native OpenAI or Claude model; it costs more than the Contributor tier.
 
 ```sh
 codex -m openrouter/meta/muse-spark-1.3
@@ -360,7 +360,7 @@ codex -m openrouter/meta/muse-spark-1.3
 
 #### Muse Spark 1.3 Contributor
 
-[`catalog/muse-model.json`](../catalog/muse-model.json) adds `openrouter/meta/muse-spark-1.3-contributor` with OpenRouter's published **1,048,576-token** context and a 95% effective budget. Reasoning is mandatory upstream, so the entry offers `low` through `max` (default `medium`) and no `none`; it declares no parallel tool calls.
+[`catalog/meta/muse.json`](../catalog/meta/muse.json) adds `openrouter/meta/muse-spark-1.3-contributor` with OpenRouter's published **1,048,576-token** context and a 95% effective budget. Reasoning is mandatory upstream, so the entry offers `low` through `max` (default `medium`) and no `none`; it declares no parallel tool calls.
 
 ```sh
 codex -m openrouter/meta/muse-spark-1.3-contributor
@@ -373,7 +373,7 @@ OpenRouter routes to it only after you allow endpoints that may train on inputs 
 
 #### GPT-6.1 Sol
 
-[`catalog/gpt-sol-openrouter-model.json`](../catalog/gpt-sol-openrouter-model.json) adds `openrouter/openai/gpt-6.1-sol`, separate from the native `gpt-6.1-sol`: the prefix sends it to OpenRouter, on OpenRouter credit, and the native name keeps going to the Codex backend. Its context starts at the native default of 272,000 tokens, up to OpenRouter's 1,050,000; the entry offers `low` through `max` (default `low`), since OpenRouter rejects `ultra`, and declares no parallel tool calls.
+[`catalog/openai/gpt-sol-openrouter.json`](../catalog/openai/gpt-sol-openrouter.json) adds `openrouter/openai/gpt-6.1-sol`, separate from the native `gpt-6.1-sol`: the prefix sends it to OpenRouter, on OpenRouter credit, and the native name keeps going to the Codex backend. Its context starts at the native default of 272,000 tokens, up to OpenRouter's 1,050,000; the entry offers `low` through `max` (default `low`), since OpenRouter rejects `ultra`, and declares no parallel tool calls.
 
 ```sh
 codex -m openrouter/openai/gpt-6.1-sol
@@ -383,7 +383,7 @@ A session that uses it counts as an OpenAI session: it stays off the training ti
 
 #### Claude Sonnet 5.5 and Claude Opus 5.5
 
-[`catalog/claude-sonnet-model.json`](../catalog/claude-sonnet-model.json) and [`catalog/claude-opus-model.json`](../catalog/claude-opus-model.json) add `anthropic/claude-sonnet-5-5` and `anthropic/claude-opus-5-5` with a **1,000,000-token** context and a 95% effective budget. Thinking cannot be turned off, so the entries offer `low` through `max` (default `medium`) and no `none`.
+[`catalog/anthropic/sonnet.json`](../catalog/anthropic/sonnet.json) and [`catalog/anthropic/opus.json`](../catalog/anthropic/opus.json) add `anthropic/claude-sonnet-5-5` and `anthropic/claude-opus-5-5` with a **1,000,000-token** context and a 95% effective budget. Thinking cannot be turned off, so the entries offer `low` through `max` (default `medium`) and no `none`.
 
 With `ANTHROPIC_API_KEY` in the [router settings](#router-settings), Claude runs on Anthropic's API; without it, Claude runs on OpenRouter's copy of the same model. Both routes charge the same per-token prices, but credits from a Claude plan work only on Anthropic's API, and only there does Claude's signed thinking carry from step to step. A thread keeps the route it started on, and moves to OpenRouter if Anthropic refuses the key, the credits, a spend limit, or the model; see [Claude's two routes](routing.md#claudes-two-routes).
 
@@ -399,7 +399,7 @@ codex -m anthropic/claude-opus-5-5
 
 #### Claude Fable 5.2
 
-[`catalog/claude-fable-model.json`](../catalog/claude-fable-model.json) adds `anthropic/claude-fable-5-2` with the same context, routes, and isolation as Sonnet and Opus. Its efforts run from `low` to `max`, and its default is `high`, Anthropic's default for it.
+[`catalog/anthropic/fable.json`](../catalog/anthropic/fable.json) adds `anthropic/claude-fable-5-2` with the same context, routes, and isolation as Sonnet and Opus. Its efforts run from `low` to `max`, and its default is `high`, Anthropic's default for it.
 
 ```sh
 codex -m anthropic/claude-fable-5-2
@@ -449,7 +449,7 @@ The check matches tool call IDs only, so it misses:
 
 Native models come from Codex's bundled catalog: update Codex and rerun the installer to refresh them. For an OpenRouter model:
 
-1. Copy `catalog/deepseek-model.json` to another JSON file in `catalog/`.
+1. Copy `catalog/deepseek/deepseek.json` to a new JSON file in its vendor's folder under `catalog/`, and add its modifications to the list in [`REUSE.toml`](../REUSE.toml).
 2. Set `slug` to `openrouter/<exact-openrouter-model-slug>`.
 3. Update the display name, description, context limits, reasoning levels, and other capabilities to match the model.
 4. Refresh the prompts, then rerun the installer:
@@ -469,7 +469,7 @@ node install.mjs
 
 This project is licensed under [Apache-2.0](../LICENSE), and [NOTICE](../NOTICE) preserves the applicable OpenAI attribution. It is an independent community project.
 
-- **Catalog templates:** the DeepSeek entry includes model-message templates that match the bundled catalog of `@openai/codex` **0.167.0**, whose package metadata declares Apache-2.0; its [adjacent file notice](../catalog/deepseek-model.json.license) identifies those sections and the modifications. The Muse, Ultra Spark, and Claude entries derive from the same template, as their notices record ([Muse](../catalog/muse-model.json.license), [Ultra Spark](../catalog/deepseek-ultra-spark-model.json.license), [Claude Sonnet](../catalog/claude-sonnet-model.json.license), [Claude Opus](../catalog/claude-opus-model.json.license), [Claude Fable](../catalog/claude-fable-model.json.license), and the OpenRouter-only [Sonnet](../catalog/claude-sonnet-openrouter-model.json.license) and [Opus](../catalog/claude-opus-openrouter-model.json.license) entries).
+- **Catalog templates:** the DeepSeek entry includes model-message templates that match the bundled catalog of `@openai/codex` **0.167.0**, whose package metadata declares Apache-2.0; `REUSE.toml` identifies those sections and records each entry's modifications. The other entries derive from the same template, as it records.
 - **Redistributing:** keep the licenses and applicable notices with an entry or a modified copy, and record your own changes.
 - **Prompts:** the main and persistent instructions in `prompts/` are maintained separately and are not verbatim copies of the corresponding instructions in the installed Codex catalog; this comparison does not establish originality against other sources. Native model entries are read from the user's installed Codex during installation.
 - **Service terms:** the software license does not grant access to models or hosted services. Access to OpenAI, OpenRouter, and each model provider, including Meta's contributor tier, remains subject to their respective service terms.

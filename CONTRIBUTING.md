@@ -31,7 +31,7 @@ The installed router is a separate copy under your Codex home directory. Run `no
 | `router/config.mjs` | Router settings from `openrouter.env` and the environment, keys, logging, and private state writes. |
 | `router/anthropic.mjs` | Claude on Anthropic's API: Responses-to-Messages request translation, the streamed-event translation back, and refusals that move Claude to OpenRouter. |
 | `router/common.mjs` | Helpers shared by the router's modules and the health verifier, including the source revision. |
-| `catalog/` | Router model entries for the Codex catalog (OpenRouter models and Claude), each with a license notice. |
+| `catalog/` | Router model entries for the Codex catalog (OpenRouter models and Claude), in folders by vendor. Their license notice is in `REUSE.toml`. |
 | `prompts/` | Shared OpenRouter instructions and the two Ultra Spark delegation policies. |
 | `install.mjs` | Cross-platform entry point that runs the installer or verifier for the current OS. |
 | `platform/` | Per-OS installers and verifiers in `unix/` and `windows/`, plus the Windows access-control helper; see the [platform index](platform/README.md). |
@@ -55,6 +55,7 @@ Helpers the installers and verifiers call:
 | Script | Purpose |
 | --- | --- |
 | `scripts/build-catalog.mjs` | Build `models.json` from Codex's bundled models and `catalog/`, applying prompts, hiding native models on request, and rejecting duplicate or colliding slugs. |
+| `scripts/catalog-files.mjs` | List the catalog entry files in their vendor folders, in the order the catalog build reads them. |
 | `scripts/merge-config.mjs` | Merge the managed settings into `config.toml` and the OpenRouter-only profile, preserving everything else. |
 | `scripts/prepare-credentials.mjs` | Write `unified-router/openrouter.env`, keeping the local token and any extra router settings. |
 | `scripts/config-managed.mjs` | Report through its exit status whether a configuration already has the managed marker, which decides whether the installer asks before merging into it. |
@@ -93,7 +94,7 @@ Shared modules: `scripts/openrouter-prompts.mjs` holds the prompt rules for Open
 ### Making changes
 
 - **Router behavior:** add a focused regression test in `tests/unified-router.test.mjs`.
-- **New OpenRouter model:** copy `catalog/deepseek-model.json`, use `openrouter/<upstream-model-slug>`, and review every capability: context limits, reasoning levels, tool support, and prompts. A catalog entry alone does not prove compatibility, so try the model in Codex before proposing it.
+- **New OpenRouter model:** copy `catalog/deepseek/deepseek.json` into its vendor's folder, use `openrouter/<upstream-model-slug>`, and review every capability: context limits, reasoning levels, tool support, and prompts. A catalog entry alone does not prove compatibility, so try the model in Codex before proposing it.
 - **Installers:** keep `platform/unix/install.sh` and `platform/windows/install.ps1` aligned, including backups and preservation of unrelated configuration.
 - **Documentation:** keep the README brief and put details in `docs/`.
 

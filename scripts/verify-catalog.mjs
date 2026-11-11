@@ -1,7 +1,8 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { catalogFiles } from './catalog-files.mjs';
 import { applyOpenRouterPrompts, readPrompts, suffixField, usesOpenRouterPrompts } from './openrouter-prompts.mjs';
 
 // Check a generated or installed Codex catalog against this checkout: every
@@ -45,7 +46,7 @@ const limitFields = ['context_window', 'max_context_window', 'effective_context_
 
 let checked = 0;
 const repositorySlugs = new Set();
-for (const name of readdirSync(join(root, 'catalog')).filter(value => value.endsWith('.json'))) {
+for (const name of catalogFiles(join(root, 'catalog'))) {
   const value = JSON.parse(readFileSync(join(root, 'catalog', name), 'utf8'));
   for (const entry of Array.isArray(value) ? value : [value]) {
     if (!usesOpenRouterPrompts(entry.slug)) continue;

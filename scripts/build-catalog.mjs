@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { catalogFiles } from './catalog-files.mjs';
 import { applyOpenRouterPrompts, namesRouterModel, readPrompts, suffixField, usesOpenRouterPrompts } from './openrouter-prompts.mjs';
 
 function parseArguments(values) {
@@ -17,7 +18,7 @@ function parseArguments(values) {
 
 function readEntries(directory) {
   const entries = [];
-  for (const name of readdirSync(directory).filter(value => value.endsWith('.json')).sort()) {
+  for (const name of catalogFiles(directory)) {
     const file = join(directory, name);
     const value = JSON.parse(readFileSync(file, 'utf8'));
     const values = Array.isArray(value) ? value : [value];

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { catalogFiles } from '../scripts/catalog-files.mjs';
 import { applyOpenRouterPrompts, readPrompts, suffixField, usesOpenRouterPrompts } from '../scripts/openrouter-prompts.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -12,15 +13,15 @@ const readEntry = name => JSON.parse(readFileSync(join(root, 'catalog', name), '
 const prompts = readPrompts(join(root, 'prompts', 'openrouter-instructions.md'),
   join(root, 'prompts', 'openrouter-persistent.md'));
 const normalize = value => value.replace(/\r\n/g, '\n');
-const muse = readEntry('muse-model.json');
-const museStandard = readEntry('muse-standard-model.json');
-const deepseek = readEntry('deepseek-model.json');
-const ultraSpark = readEntry('deepseek-ultra-spark-model.json');
-const ultraSparkPrivate = readEntry('deepseek-ultra-spark-private-model.json');
+const muse = readEntry('meta/muse.json');
+const museStandard = readEntry('meta/muse-standard.json');
+const deepseek = readEntry('deepseek/deepseek.json');
+const ultraSpark = readEntry('deepseek/ultra-spark.json');
+const ultraSparkPrivate = readEntry('deepseek/ultra-spark-private.json');
 
 test('checked-in OpenRouter entries carry the rendered maintained prompts', () => {
   let checked = 0;
-  for (const name of readdirSync(join(root, 'catalog')).filter(value => value.endsWith('.json'))) {
+  for (const name of catalogFiles(join(root, 'catalog'))) {
     const value = readEntry(name);
     for (const entry of Array.isArray(value) ? value : [value]) {
       assert.equal(typeof entry.slug, 'string', `${name}: missing model slug`);
@@ -40,7 +41,7 @@ test('checked-in OpenRouter entries carry the rendered maintained prompts', () =
 
 test('OpenRouter prompts never mention Codex tools that OpenRouter threads lack', () => {
   // The verifier pins installed prompts to these entries, so checking them here covers installations too.
-  for (const name of readdirSync(join(root, 'catalog')).filter(value => value.endsWith('.json'))) {
+  for (const name of catalogFiles(join(root, 'catalog'))) {
     const value = readEntry(name);
     for (const entry of (Array.isArray(value) ? value : [value]).filter(item => usesOpenRouterPrompts(item.slug))) {
       for (const text of [entry.base_instructions, entry.model_messages?.instructions_template,
@@ -75,11 +76,11 @@ test('Muse Spark 1.3 is the Contributor entry on the endpoint that does not trai
 
 test('Claude catalog entries match the model capabilities on each route', () => {
   for (const [name, slug, displayName, visibility, parallel] of [
-    ['claude-sonnet-model.json', 'anthropic/claude-sonnet-5-5', 'Claude Sonnet 5.5', 'list', true],
-    ['claude-opus-model.json', 'anthropic/claude-opus-5-5', 'Claude Opus 5.5', 'list', true],
+    ['anthropic/sonnet.json', 'anthropic/claude-sonnet-5-5', 'Claude Sonnet 5.5', 'list', true],
+    ['anthropic/opus.json', 'anthropic/claude-opus-5-5', 'Claude Opus 5.5', 'list', true],
     // OpenRouter-only entries stay usable by name, for threads that started on them.
-    ['claude-sonnet-openrouter-model.json', 'openrouter/anthropic/claude-sonnet-5.5', 'Claude Sonnet 5.5', 'hide', false],
-    ['claude-opus-openrouter-model.json', 'openrouter/anthropic/claude-opus-5.5', 'Claude Opus 5.5', 'hide', false],
+    ['anthropic/sonnet-openrouter.json', 'openrouter/anthropic/claude-sonnet-5.5', 'Claude Sonnet 5.5', 'hide', false],
+    ['anthropic/opus-openrouter.json', 'openrouter/anthropic/claude-opus-5.5', 'Claude Opus 5.5', 'hide', false],
   ]) {
     const entry = readEntry(name);
     assert.equal(entry.slug, slug);
@@ -98,7 +99,7 @@ test('Claude catalog entries match the model capabilities on each route', () => 
 });
 
 test('Claude Fable 5.2 has its own entry, effort levels, and default', () => {
-  const fable = readEntry('claude-fable-model.json');
+  const fable = readEntry('anthropic/fable.json');
   assert.equal(fable.slug, 'anthropic/claude-fable-5-2');
   assert.equal(fable.display_name, 'Claude Fable 5.2');
   assert.equal(fable.visibility, 'list');
@@ -115,7 +116,7 @@ test('Claude Fable 5.2 has its own entry, effort levels, and default', () => {
 });
 
 test('GPT-6.1 Sol on OpenRouter keeps its own name beside the native model', () => {
-  const sol = readEntry('gpt-sol-openrouter-model.json');
+  const sol = readEntry('openai/gpt-sol-openrouter.json');
   assert.equal(sol.slug, 'openrouter/openai/gpt-6.1-sol');
   assert.equal(sol.display_name, 'GPT-6.1 Sol (OpenRouter)');
   assert.equal(sol.visibility, 'list');
@@ -213,6 +214,26 @@ test('catalog builds reject missing prompts, duplicate slugs, and replacements o
   }
 });
 
+test('catalog builds read entries from vendor folders', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'router-catalog-folders-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const catalogDir = join(directory, 'catalog');
+  for (const [vendor, slug] of [['vendor-b', 'openrouter/vendor-b/model'], ['vendor-a', 'openrouter/vendor-a/model']]) {
+    mkdirSync(join(catalogDir, vendor), { recursive: true });
+    writeFileSync(join(catalogDir, vendor, 'model.json'), JSON.stringify({ slug }));
+  }
+  writeFileSync(join(directory, 'bundled.json'), JSON.stringify({ models: [] }));
+  const built = spawnSync(process.execPath, [join(root, 'scripts', 'build-catalog.mjs'),
+    '--bundled', join(directory, 'bundled.json'), '--catalog-dir', catalogDir,
+    '--instructions', join(root, 'prompts', 'openrouter-instructions.md'),
+    '--persistent', join(root, 'prompts', 'openrouter-persistent.md'),
+    '--output', join(directory, 'models.json')], { encoding: 'utf8' });
+  assert.equal(built.status, 0, built.stderr);
+  const slugs = JSON.parse(readFileSync(join(directory, 'models.json'), 'utf8')).models.map(model => model.slug);
+  assert.deepEqual(slugs, ['openrouter/vendor-a/model', 'openrouter/vendor-b/model']);
+  assert.deepEqual(catalogFiles(catalogDir), ['vendor-a/model.json', 'vendor-b/model.json']);
+});
+
 test('prompt suffixes must name a file in the prompts directory', () => {
   for (const suffix of ['../secret.md', 'ultra-spark.txt', '/etc/passwd']) {
     assert.throws(() => applyOpenRouterPrompts({ slug: 'openrouter/vendor/model', [suffixField]: suffix }, prompts),
@@ -243,7 +264,7 @@ test('verify-catalog checks router entries against the repository and reports wh
   assert.equal(verify(catalogFile).status, 0, verify(catalogFile).stderr);
   const shown = verify('--report', catalogFile);
   assert.equal(shown.stdout, 'Router models: anthropic/claude-fable-5-2, anthropic/claude-opus-5-5, anthropic/claude-sonnet-5-5, '
-    + `${deepseek.slug}, ${ultraSpark.slug}, ${ultraSparkPrivate.slug}, openrouter/openai/gpt-6.1-sol, ${muse.slug}, ${museStandard.slug}\n`
+    + `${deepseek.slug}, ${ultraSpark.slug}, ${ultraSparkPrivate.slug}, ${muse.slug}, ${museStandard.slug}, openrouter/openai/gpt-6.1-sol\n`
     + 'Router models usable by name: openrouter/anthropic/claude-opus-5.5, openrouter/anthropic/claude-sonnet-5.5\n'
     + 'Native OpenAI models: 1 in /model (require a ChatGPT plan)\n');
   assert.equal(build('hide').status, 0);

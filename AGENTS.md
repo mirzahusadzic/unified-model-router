@@ -19,7 +19,7 @@ Small loopback Responses API router for local clients; Codex is the first one, s
 | Provider isolation, Claude routes, Ultra Spark lead call IDs | `router/sessions.mjs` |
 | Router settings, keys, logging | `router/config.mjs` |
 | Claude on Anthropic's API: Messages translation, refusals | `router/anthropic.mjs` |
-| OpenRouter models | `catalog/*.json` |
+| OpenRouter models | `catalog/<vendor>/*.json`; their license notice in `REUSE.toml` |
 | Shared OpenRouter prompts | `prompts/openrouter-instructions.md`, `prompts/openrouter-persistent.md` |
 | Ultra Spark delegation policies | `prompts/ultra-spark-private.md` (non-training), `prompts/ultra-spark.md` (Contributor) |
 | Catalog generation, prompt rendering | `scripts/build-catalog.mjs`, `scripts/openrouter-prompts.mjs` |
@@ -33,7 +33,7 @@ Small loopback Responses API router for local clients; Codex is the first one, s
 ### Catalog
 
 - Slugs: `openrouter/` is stripped; `deepseek/` is kept; `ultra-spark-private/` and `ultra-spark/` forward as `deepseek/` with their Ultra Spark prompts (workers on Muse Spark 1.3, or on Contributor); `anthropic/<model ID>` goes to Anthropic's API with `ANTHROPIC_API_KEY`, else to OpenRouter, and a session keeps its first route; anything else goes to the native Codex backend and its bundled models.
-- New OpenRouter entry: copy `catalog/deepseek-model.json`, slug `openrouter/<upstream-model-slug>`, review context limits, effective context percentage, reasoning levels, tool support, and prompts. An entry does not prove upstream compatibility.
+- New OpenRouter entry: copy `catalog/deepseek/deepseek.json` into its vendor's folder, slug `openrouter/<upstream-model-slug>`, review context limits, effective context percentage, reasoning levels, tool support, and prompts. An entry does not prove upstream compatibility.
 - After editing prompts or adding an entry: `node scripts/render-openrouter-entries.mjs`, and commit the updated entries. `router_instructions_suffix` appends one more `prompts/` file; the generated Codex catalog omits that field.
 - Model context settings live in the catalog; native models keep their bundled limits.
 
@@ -65,7 +65,7 @@ Small loopback Responses API router for local clients; Codex is the first one, s
 The tested version is `testedCodexVersion` in `install.mjs`. An unpinned daemon can run a newer release than the CLI: compare `codex --version` with `codex app-server daemon version`.
 
 1. Diff `rust-v<old>..rust-v<new>` in `openai/codex` for: the `session-id` and `thread-id` headers (a main thread's ID equals its session ID), the `upstreamHeaders` allowlist, request fields, input item types, `spawn_agent`'s `fork_context`, the keys `scripts/merge-config.mjs` writes, guardian gating, and the `codex app-server daemon` `version`, `restart`, and `update --from-cli` commands with the `auto-update-version` marker `scripts/codex-daemon.mjs` checks.
-2. Compare `codex debug models --bundled` from both versions, in a scratch `CODEX_HOME`. Template changes: update the catalog entries, their `.license` files, and `NOTICE`.
+2. Compare `codex debug models --bundled` from both versions, in a scratch `CODEX_HOME`. Template changes: update the catalog entries, `REUSE.toml`, and `NOTICE`.
 3. In a scratch `CODEX_HOME`, point a provider at a local capture server and compare both versions' requests for a fresh OpenRouter thread and a native-to-OpenRouter switch. Replay the turns through the installed router with `codex exec -c model_provider=...`, resuming by session ID with the recording provider: `resume --last` misses other providers' sessions, and since 0.166.0 Codex refuses another provider. Pass `-m`; keep test traffic off Muse and Ultra Spark.
 4. Fix incompatibilities with regression tests. Update every tested-version reference, escaped regex forms such as `0\.163\.0` included (`git grep -n 163`), but keep statements about the version that introduced a behavior. With the new CLI, run `node --test` (`tests/prompt-budget.test.mjs` flags changed tools, request size, or features for router models; review each change before updating expectations), the installer, and `node install.mjs --verify`.
 5. `git tag -a codex-<new>` on the verified commit; it is the fallback in `docs/operations.md`, "Return to an earlier Codex version". Move it with `git tag -f -a` when a later commit passes the same checks. Before raising the pin, `codex-<old>` must mark the last commit verified with the old version. Tags stay local until pushed.

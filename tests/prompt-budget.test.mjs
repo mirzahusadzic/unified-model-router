@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { catalogFiles } from '../scripts/catalog-files.mjs';
 
 // Codex decides what every request carries: tool definitions, instructions,
 // and context. A release can add tools or prompt text without notice, as the
@@ -72,7 +73,7 @@ const reviewed = {
 const expected = reviewed[process.platform];
 const requestSkip = versionSkip || (!expected && `no reviewed expectations for ${process.platform}`);
 
-const routerModels = readdirSync(join(root, 'catalog')).filter(name => name.endsWith('.json'))
+const routerModels = catalogFiles(join(root, 'catalog'))
   .map(name => JSON.parse(readFileSync(join(root, 'catalog', name), 'utf8')).slug).sort();
 const token = 'a'.repeat(64);
 

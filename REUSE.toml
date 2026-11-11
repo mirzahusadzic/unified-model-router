@@ -1,0 +1,51 @@
+version = 1
+
+# Model catalog entries. Each is derived from the bundled model catalog of
+# @openai/codex 0.167.0 (`codex debug models --bundled`,
+# https://github.com/openai/codex) and modified for Unified Model Router in
+# 2026. Their model_messages sections approvals, collaboration_modes,
+# auto_review, multi_agent, token_budget, guardian_v2, and
+# confirmation_policies match templates in the bundled Codex catalog. JSON has
+# no comments, so this file carries each entry's notice; keep it with the
+# entries when redistributing them.
+#
+# Modifications, by entry:
+# - deepseek/deepseek.json: DeepSeek model identity, capabilities, context
+#   limits, reasoning settings, and main and persistent instructions
+#   maintained in prompts/.
+# - deepseek/ultra-spark.json, derived from the DeepSeek entry: Ultra Spark
+#   model identity, OpenRouter routing, the router_instructions_suffix field,
+#   and main and persistent instructions maintained in prompts/, including
+#   the ultra-spark.md delegation policy.
+# - deepseek/ultra-spark-private.json, derived from the DeepSeek entry:
+#   non-training Ultra Spark model identity, OpenRouter routing, the
+#   router_instructions_suffix field, and main and persistent instructions
+#   maintained in prompts/, including the ultra-spark-private.md delegation
+#   policy.
+# - meta/muse.json, derived from the DeepSeek entry: Muse Spark 1.3
+#   Contributor model identity, OpenRouter routing, capabilities, context
+#   limits, reasoning settings, and main and persistent instructions
+#   maintained in prompts/.
+# - meta/muse-standard.json, derived from the DeepSeek entry: Muse Spark 1.3
+#   model identity, OpenRouter routing, capabilities, context limits,
+#   reasoning settings, and main and persistent instructions maintained in
+#   prompts/.
+# - openai/gpt-sol-openrouter.json, derived from the DeepSeek entry: GPT-6.1
+#   Sol model identity, OpenRouter-only routing, capabilities, context limits,
+#   reasoning settings, and main and persistent instructions maintained in
+#   prompts/.
+# - anthropic/sonnet.json, anthropic/opus.json and anthropic/fable.json,
+#   derived from the DeepSeek entry: Claude Sonnet 5.5, Claude Opus 5.5 and
+#   Claude Fable 5.2 model identities, Anthropic API routing with an
+#   OpenRouter fallback, capabilities, context limits, reasoning settings, and
+#   main and persistent instructions maintained in prompts/.
+# - anthropic/sonnet-openrouter.json and anthropic/opus-openrouter.json,
+#   derived from the DeepSeek entry: Claude Sonnet 5.5 and Claude Opus 5.5
+#   model identities, OpenRouter-only routing, capabilities, context limits,
+#   reasoning settings, and main and persistent instructions maintained in
+#   prompts/.
+[[annotations]]
+path = "catalog/**/*.json"
+precedence = "override"
+SPDX-FileCopyrightText = ["2025 OpenAI", "2026 Mirza Husadzic"]
+SPDX-License-Identifier = "Apache-2.0"
