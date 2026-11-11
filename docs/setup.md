@@ -324,7 +324,7 @@ codex --profile unified-openrouter \
 | **GPT-6.1 Sol (OpenRouter)** | `openrouter/openai/gpt-6.1-sol` | 272,000 tokens | Billed to OpenRouter credit, beside the native model; see [GPT-6.1 Sol](#gpt-61-sol) |
 | **Claude Fable 5.2** | `anthropic/claude-fable-5-2` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet; see [Claude Fable 5.2](#claude-fable-52) |
 | **Claude Opus 5.5** | `anthropic/claude-opus-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet |
-| **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Sonnet 5.5 and Claude Opus 5.5](#claude-sonnet-55-and-claude-opus-55) |
+| **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Sonnet 5.5, Opus 5.5 and Fable 5.2](#claude-sonnet-55-opus-55-and-fable-52) |
 | Native OpenAI models | for example `gpt-6-astra` | bundled limits | Require a ChatGPT plan |
 
 #### DeepSeek context window
@@ -381,7 +381,7 @@ codex -m openrouter/openai/gpt-6.1-sol
 
 A session that uses it counts as an OpenAI session: it stays off the training tier and its OpenRouter requests carry `provider.data_collection: "deny"`. An OpenRouter guardrail that blocks the model or OpenAI ends each request in a router diagnostic until you allow them.
 
-#### Claude Sonnet 5.5 and Claude Opus 5.5
+#### Claude Sonnet 5.5, Opus 5.5 and Fable 5.2
 
 [`catalog/anthropic/sonnet.json`](../catalog/anthropic/sonnet.json) and [`catalog/anthropic/opus.json`](../catalog/anthropic/opus.json) add `anthropic/claude-sonnet-5-5` and `anthropic/claude-opus-5-5` with a **1,000,000-token** context and a 95% effective budget. Thinking cannot be turned off, so the entries offer `low` through `max` (default `medium`) and no `none`.
 
@@ -397,7 +397,7 @@ codex -m anthropic/claude-opus-5-5
 - **Older threads:** `openrouter/anthropic/claude-sonnet-5.5` and `openrouter/anthropic/claude-opus-5.5` are hidden from `/model` but still work by name, for threads that started on them.
 - **Isolation:** Claude never shares a session with Muse Spark 1.3 Contributor, Ultra Spark Contributor, or other training-tier models, on either route.
 
-#### Claude Fable 5.2
+##### Claude Fable 5.2
 
 [`catalog/anthropic/fable.json`](../catalog/anthropic/fable.json) adds `anthropic/claude-fable-5-2` with the same context, routes, and isolation as Sonnet and Opus. Its efforts run from `low` to `max`, and its default is `high`, Anthropic's default for it.
 

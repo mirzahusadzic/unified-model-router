@@ -190,7 +190,7 @@ codex -m anthropic/claude-sonnet-5-5
 | **Muse Spark 1.3** | Muse on private code: its endpoint does not train on inputs, at a higher price. [Details](docs/setup.md#muse-spark-13) |
 | **Muse Spark 1.3 Contributor** | Fast, inexpensive work on public code. [Details](docs/setup.md#muse-spark-13-contributor) |
 | **GPT-6.1 Sol (OpenRouter)** | Strong for text comprehension and rewriting at `xhigh`. Runs on OpenRouter credit, without a ChatGPT plan; the native model keeps its own name. [Details](docs/setup.md#gpt-61-sol) |
-| **Claude Fable 5.2 · Claude Opus 5.5 · Claude Sonnet 5.5** | Hard problems that need Anthropic's models; prompt caching keeps long threads affordable. Runs on Anthropic's API when you add `ANTHROPIC_API_KEY` to the [router settings](docs/setup.md#router-settings), otherwise on OpenRouter. [Details](docs/setup.md#claude-sonnet-55-and-claude-opus-55) |
+| **Claude Fable 5.2 · Claude Opus 5.5 · Claude Sonnet 5.5** | Hard problems that need Anthropic's models; prompt caching keeps long threads affordable. Runs on Anthropic's API when you add `ANTHROPIC_API_KEY` to the [router settings](docs/setup.md#router-settings), otherwise on OpenRouter. [Details](docs/setup.md#claude-sonnet-55-opus-55-and-fable-52) |
 | **Any `openrouter/<vendor>/<model>`** | Trying another model; [add a catalog entry](docs/setup.md#add-a-model) to list it in `/model`. |
 | **Native OpenAI**, such as `gpt-6-astra` | Requires a ChatGPT plan. |
 

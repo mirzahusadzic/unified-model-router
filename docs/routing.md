@@ -45,7 +45,7 @@ On the way, the router adapts each request to its upstream:
 
 ### Claude's two routes
 
-With `ANTHROPIC_API_KEY` set, Claude runs on Anthropic's Messages API, and the router translates between it and Codex's Responses API; without the key, Claude runs on OpenRouter's copy of the same model. The entries and the key are described in [Claude Sonnet 5.5 and Claude Opus 5.5](setup.md#claude-sonnet-55-and-claude-opus-55).
+With `ANTHROPIC_API_KEY` set, Claude runs on Anthropic's Messages API, and the router translates between it and Codex's Responses API; without the key, Claude runs on OpenRouter's copy of the same model. The entries and the key are described in [Claude Sonnet 5.5, Opus 5.5 and Fable 5.2](setup.md#claude-sonnet-55-opus-55-and-fable-52).
 
 Add the key to `~/.codex/unified-router/openrouter.env`:
 
