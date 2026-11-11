@@ -322,8 +322,9 @@ codex --profile unified-openrouter \
 | **Muse Spark 1.3** | `openrouter/meta/muse-spark-1.3` | 1,048,576 tokens | Its endpoint does not train on its inputs; see [Muse Spark 1.3](#muse-spark-13) |
 | **Muse Spark 1.3 Contributor** | `openrouter/meta/muse-spark-1.3-contributor` | 1,048,576 tokens | Meta trains on its inputs; see [Muse Spark 1.3 Contributor](#muse-spark-13-contributor) |
 | **GPT-6.1 Sol (OpenRouter)** | `openrouter/openai/gpt-6.1-sol` | 272,000 tokens | Billed to OpenRouter credit, beside the native model; see [GPT-6.1 Sol](#gpt-61-sol) |
-| **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Sonnet 5.5 and Claude Opus 5.5](#claude-sonnet-55-and-claude-opus-55) |
+| **Claude Fable 5.2** | `anthropic/claude-fable-5-2` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet; see [Claude Fable 5.2](#claude-fable-52) |
 | **Claude Opus 5.5** | `anthropic/claude-opus-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet |
+| **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Sonnet 5.5 and Claude Opus 5.5](#claude-sonnet-55-and-claude-opus-55) |
 | Native OpenAI models | for example `gpt-6-astra` | bundled limits | Require a ChatGPT plan |
 
 #### DeepSeek context window
@@ -396,6 +397,18 @@ codex -m anthropic/claude-opus-5-5
 - **Older threads:** `openrouter/anthropic/claude-sonnet-5.5` and `openrouter/anthropic/claude-opus-5.5` are hidden from `/model` but still work by name, for threads that started on them.
 - **Isolation:** Claude never shares a session with Muse Spark 1.3 Contributor, Ultra Spark Contributor, or other training-tier models, on either route.
 
+#### Claude Fable 5.2
+
+[`catalog/claude-fable-model.json`](../catalog/claude-fable-model.json) adds `anthropic/claude-fable-5-2` with the same context, routes, and isolation as Sonnet and Opus. Its efforts run from `low` to `max`, and its default is `high`, Anthropic's default for it.
+
+```sh
+codex -m anthropic/claude-fable-5-2
+```
+
+- **Data retention:** Anthropic's API serves it only to organizations with 30-day data retention, not under zero data retention; another organization gets HTTP 400, which ends in a `[router diagnostic]`.
+- **Price:** $8 per million input tokens and $40 per million output tokens on Anthropic's API.
+- **Effort changes:** On either route, switching its effort with `/model` keeps the thread's cache, as Claude's two routes describe.
+
 #### Ultra Spark mode
 
 **DeepSeek V4.1 Flash 1017 · Ultra Spark** (`ultra-spark-private/deepseek-v4.1-flash-1017`) is the same upstream DeepSeek model with [`prompts/ultra-spark-private.md`](../prompts/ultra-spark-private.md) added, which makes delegation the default. No endpoint in its session trains on inputs, so it suits private code. Switch it on or off in a thread with `/model`.
@@ -456,7 +469,7 @@ node install.mjs
 
 This project is licensed under [Apache-2.0](../LICENSE), and [NOTICE](../NOTICE) preserves the applicable OpenAI attribution. It is an independent community project.
 
-- **Catalog templates:** the DeepSeek entry includes model-message templates that match the bundled catalog of `@openai/codex` **0.167.0**, whose package metadata declares Apache-2.0; its [adjacent file notice](../catalog/deepseek-model.json.license) identifies those sections and the modifications. The Muse, Ultra Spark, and Claude entries derive from the same template, as their notices record ([Muse](../catalog/muse-model.json.license), [Ultra Spark](../catalog/deepseek-ultra-spark-model.json.license), [Claude Sonnet](../catalog/claude-sonnet-model.json.license), [Claude Opus](../catalog/claude-opus-model.json.license), and the OpenRouter-only [Sonnet](../catalog/claude-sonnet-openrouter-model.json.license) and [Opus](../catalog/claude-opus-openrouter-model.json.license) entries).
+- **Catalog templates:** the DeepSeek entry includes model-message templates that match the bundled catalog of `@openai/codex` **0.167.0**, whose package metadata declares Apache-2.0; its [adjacent file notice](../catalog/deepseek-model.json.license) identifies those sections and the modifications. The Muse, Ultra Spark, and Claude entries derive from the same template, as their notices record ([Muse](../catalog/muse-model.json.license), [Ultra Spark](../catalog/deepseek-ultra-spark-model.json.license), [Claude Sonnet](../catalog/claude-sonnet-model.json.license), [Claude Opus](../catalog/claude-opus-model.json.license), [Claude Fable](../catalog/claude-fable-model.json.license), and the OpenRouter-only [Sonnet](../catalog/claude-sonnet-openrouter-model.json.license) and [Opus](../catalog/claude-opus-openrouter-model.json.license) entries).
 - **Redistributing:** keep the licenses and applicable notices with an entry or a modified copy, and record your own changes.
 - **Prompts:** the main and persistent instructions in `prompts/` are maintained separately and are not verbatim copies of the corresponding instructions in the installed Codex catalog; this comparison does not establish originality against other sources. Native model entries are read from the user's installed Codex during installation.
 - **Service terms:** the software license does not grant access to models or hosted services. Access to OpenAI, OpenRouter, and each model provider, including Meta's contributor tier, remains subject to their respective service terms.

@@ -26,7 +26,7 @@ The installed router is a separate copy under your Codex home directory. Run `no
 | `router/upstream.mjs` | Routes from model slugs, upstream headers, the shared request opener, error bodies, and the usage tap. |
 | `router/adapt.mjs` | Request shaping for each upstream (history normalization, reasoning, structured output, caching) and the bounded recovery payload. |
 | `router/web-search.mjs` | Router-run web search and the stream rewriter that runs it and normalizes tool arguments. |
-| `router/sessions.mjs` | Per-session state: provider isolation sides, Claude routes, and Ultra Spark lead call IDs. |
+| `router/sessions.mjs` | Per-session state: provider isolation sides, Claude routes, Claude threads' effort changes, and Ultra Spark lead call IDs. |
 | `router/served-by.mjs` | The served-by report: marks the final event with the provider, and looks up OpenRouter's record of a generation when a caller asks. |
 | `router/config.mjs` | Router settings from `openrouter.env` and the environment, keys, logging, and private state writes. |
 | `router/anthropic.mjs` | Claude on Anthropic's API: Responses-to-Messages request translation, the streamed-event translation back, and refusals that move Claude to OpenRouter. |

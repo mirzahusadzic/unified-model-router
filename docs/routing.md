@@ -23,8 +23,9 @@ The same catalog serves main threads, spawned agents, and any interface that exp
 | `openrouter/meta/muse-spark-1.3` | OpenRouter | `meta/muse-spark-1.3` |
 | `openrouter/meta/muse-spark-1.3-contributor` | OpenRouter | `meta/muse-spark-1.3-contributor` |
 | `openrouter/openai/gpt-6.1-sol` | OpenRouter | `openai/gpt-6.1-sol` |
-| `anthropic/claude-sonnet-5-5` | Anthropic's API, or OpenRouter | `claude-sonnet-5-5`, or `anthropic/claude-sonnet-5.5` |
+| `anthropic/claude-fable-5-2` | Anthropic's API, or OpenRouter | `claude-fable-5-2`, or `anthropic/claude-fable-5.2` |
 | `anthropic/claude-opus-5-5` | Anthropic's API, or OpenRouter | `claude-opus-5-5`, or `anthropic/claude-opus-5.5` |
+| `anthropic/claude-sonnet-5-5` | Anthropic's API, or OpenRouter | `claude-sonnet-5-5`, or `anthropic/claude-sonnet-5.5` |
 | `openrouter/vendor/model` | OpenRouter | `vendor/model` |
 
 On the way, the router adapts each request to its upstream:
@@ -65,6 +66,10 @@ Each route keeps its own cache and signed thinking:
 
 - **Why threads stay put:** Prompt caches and signed thinking belong to the route that made them, so a move costs a full cache write and the earlier reasoning.
 - **Route records:** Each session's route, without content, in `unified-router/claude-routes.json` for 30 days after its last request, so routes survive restarts.
+- **Effort changes:** A new top-level effort restarts Claude's cache, so when Codex changes the effort in the middle of a thread, the top-level effort stays the one the thread started with, and the change goes in just before the user message whose request first carried it: an effort-only system message on Anthropic's API, sent with the `mid-conversation-output-config-2026-07-01` beta, or a `configuration_update` item on OpenRouter. Later requests place it again, so the cache holds. A thread whose effort never changed, a request without a session ID, and a declared thinking budget go out as before; on Anthropic's API, so does a move between `none`, `minimal`, and `low`, which Claude runs alike at `low`.
+- **Models that take them:** On Anthropic's API, Claude Fable 5.2 and 5.1, Mythos 5.2 and 5.1, Opus 5.5 and 5, Sonnet 5.5, and Haiku 5.5. OpenRouter lists only Claude Fable 5.2 and 5.1 and Opus 5, so there an effort change on Opus 5.5 or Sonnet 5.5 still restarts the cache. Other models keep the top-level effort.
+- **Effort records:** Each thread's starting effort and changes, at the count of its user messages, in `unified-router/claude-efforts.json` for 30 days after its last request. Spawned agents share their parent's session ID but keep their own records. A history that shrank, after compaction or a rewind, drops the changes past its end, and a retry with trimmed history sets the current effort at the top level again.
+- **Progress notes:** The notes Claude writes between tool calls reach Codex inside its reasoning summaries, on both routes, since Anthropic's API is asked for summarized thinking and OpenRouter summarizes by default. With `model_reasoning_summary = "none"`, Anthropic's API returns none, and the notes stay hidden too.
 - **Fallback:** A refusal no retry fixes sends the same request to OpenRouter, or returns a `[router diagnostic]` without an OpenRouter key; `anthropic.refused` logs it. For the next hour, or until the router restarts, every Claude request goes to OpenRouter, and threads that move stay there. A caller can opt out with `X-Codex-Router-Fallback: none`, under Routing policy.
 - **The same model:** The router never uses Anthropic's server-side `fallbacks`, which can answer with another model.
 - **Prompt caching:** A top-level `cache_control` keeps the cache breakpoint on the last cacheable block as the thread grows. Cache writes cost 1.25 times the input price and reads 5% of it; the cache expires after 5 idle minutes.

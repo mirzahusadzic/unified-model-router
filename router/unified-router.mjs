@@ -449,8 +449,10 @@ const server = http.createServer((request, response) => {
     // endpoints even without a session ID.
     const sessionProtected = protectedSession(requestInfo.sessionId) || side === 'private' || requestDataPolicy === 'deny';
     let {
-      stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch,
-    } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache, endpoints });
+      stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch, effortUpdates,
+    } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, {
+      protectedSession: sessionProtected, promptCache, endpoints, thread: threadId ?? requestInfo.sessionId, thinkingBudget,
+    });
     let structuredOutputAdapted = Boolean(structuredOutputInstruction);
     parsed.model = upstreamModel;
     let body;
@@ -478,8 +480,10 @@ const server = http.createServer((request, response) => {
       recordClaudeRoute(requestInfo.sessionId, target.provider);
       parsed = JSON.parse(rawBody.toString('utf8'));
       ({
-        stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch,
-      } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, { protectedSession: sessionProtected, promptCache, endpoints }));
+        stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch, effortUpdates,
+      } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, {
+        protectedSession: sessionProtected, promptCache, endpoints, thread: threadId ?? requestInfo.sessionId, thinkingBudget,
+      }));
       structuredOutputAdapted = Boolean(structuredOutputInstruction);
       parsed.model = upstreamModel;
       body = Buffer.from(JSON.stringify(parsed));
@@ -620,6 +624,7 @@ const server = http.createServer((request, response) => {
         requestedModel,
         structuredOutputAdapted,
         promptCachingAdded,
+        effortUpdates,
         promptCache: promptCache || 'default',
         requestDataPolicy: requestDataPolicy || 'default',
         fallback: claudeFallback ? 'default' : 'none',

@@ -122,7 +122,8 @@ export function openUpstream({
   if (target.provider === 'anthropic') {
     const translated = messagesRequest(JSON.parse(body.toString('utf8')), { promptCache, thinkingBudget });
     sent = Buffer.from(JSON.stringify(translated.body));
-    headers = { ...headers, 'content-length': String(sent.length) };
+    headers = { ...headers, 'content-length': String(sent.length),
+      ...(translated.betas.length > 0 ? { 'anthropic-beta': [headers['anthropic-beta'], ...translated.betas].join(',') } : {}) };
     respond = upstreamResponse => onResponse(anthropicResponse(upstreamResponse, translated.declared, log));
   }
   const upstream = target.protocol.request({

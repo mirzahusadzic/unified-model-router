@@ -35,7 +35,7 @@ test('checked-in OpenRouter entries carry the rendered maintained prompts', () =
       checked += 1;
     }
   }
-  assert.equal(checked, 10);
+  assert.equal(checked, 11);
 });
 
 test('OpenRouter prompts never mention Codex tools that OpenRouter threads lack', () => {
@@ -95,6 +95,23 @@ test('Claude catalog entries match the model capabilities on each route', () => 
     assert.equal(entry.supports_parallel_tool_calls, parallel);
     assert.deepEqual(entry.input_modalities, ['text', 'image']);
   }
+});
+
+test('Claude Fable 5.2 has its own entry, effort levels, and default', () => {
+  const fable = readEntry('claude-fable-model.json');
+  assert.equal(fable.slug, 'anthropic/claude-fable-5-2');
+  assert.equal(fable.display_name, 'Claude Fable 5.2');
+  assert.equal(fable.visibility, 'list');
+  assert.equal(fable.context_window, 1000000);
+  assert.equal(fable.max_context_window, 1000000);
+  assert.equal(fable.effective_context_window_percent, 95);
+  // Thinking is always on, and Anthropic's default effort for it is high.
+  assert.deepEqual(fable.supported_reasoning_levels.map(level => level.effort), ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(fable.default_reasoning_level, 'high');
+  assert.equal(fable.supports_parallel_tool_calls, true);
+  assert.deepEqual(fable.input_modalities, ['text', 'image']);
+  // Anthropic's API serves it only under 30-day retention.
+  assert.match(fable.description, /30-day data retention, not under zero data retention/);
 });
 
 test('GPT-6.1 Sol on OpenRouter keeps its own name beside the native model', () => {
@@ -225,7 +242,7 @@ test('verify-catalog checks router entries against the repository and reports wh
   assert.equal(build('show').status, 0);
   assert.equal(verify(catalogFile).status, 0, verify(catalogFile).stderr);
   const shown = verify('--report', catalogFile);
-  assert.equal(shown.stdout, 'Router models: anthropic/claude-opus-5-5, anthropic/claude-sonnet-5-5, '
+  assert.equal(shown.stdout, 'Router models: anthropic/claude-fable-5-2, anthropic/claude-opus-5-5, anthropic/claude-sonnet-5-5, '
     + `${deepseek.slug}, ${ultraSpark.slug}, ${ultraSparkPrivate.slug}, openrouter/openai/gpt-6.1-sol, ${muse.slug}, ${museStandard.slug}\n`
     + 'Router models usable by name: openrouter/anthropic/claude-opus-5.5, openrouter/anthropic/claude-sonnet-5.5\n'
     + 'Native OpenAI models: 1 in /model (require a ChatGPT plan)\n');

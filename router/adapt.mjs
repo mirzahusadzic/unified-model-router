@@ -1,7 +1,8 @@
 // Shaping a request for its upstream, and the bounded retry after a rejected
 // step.
-import { hasSystemPrompt, isAnthropicThinking } from './anthropic.mjs';
+import { claudeEffort, hasSystemPrompt, isAnthropicThinking } from './anthropic.mjs';
 import { openrouterApiKey, providerOrders } from './config.mjs';
+import { claudeEffortChanges } from './sessions.mjs';
 import { overrideWebSearchForOpenRouter } from './web-search.mjs';
 
 const openrouterRecoveryCompactBytes = 1024 * 1024;
@@ -47,6 +48,59 @@ function normalizeReasoningForOpenRouter(value, model) {
   const effort = String(value.effort);
   if (['low', 'high', 'max', 'none'].includes(effort)) return;
   value.effort = effort === 'minimal' ? 'low' : effort === 'medium' ? 'high' : 'max';
+}
+
+// The Claude models that take an effort change inside the conversation, on
+// each route: Anthropic's per-message effort, and OpenRouter's
+// configuration_update item, which OpenRouter lists for fewer models.
+const effortUpdateModels = {
+  anthropic: new Set(['claude-fable-5-2', 'claude-fable-5-1', 'claude-mythos-5-2', 'claude-mythos-5-1',
+    'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5', 'claude-haiku-5-5']),
+  openrouter: new Set(['anthropic/claude-fable-5.2', 'anthropic/claude-fable-5.1', 'anthropic/claude-opus-5']),
+};
+
+// When Codex changes Claude's effort in the middle of a thread, the
+// top-level effort stays the one the thread started with, and each change
+// becomes a configuration_update item just before the user message whose
+// request first carried it. Later requests place the same items again, so
+// the history stays a prefix of the next and the prompt cache holds. A
+// thread whose effort never changed goes out unchanged. Returns the number
+// of items added.
+function addEffortUpdates(request, provider, upstreamModel, thread, { thinkingBudget = null } = {}) {
+  if (!effortUpdateModels[provider]?.has(upstreamModel) || thinkingBudget || !Array.isArray(request.input)) return 0;
+  const isUser = item => isMessageForRole(item, 'user');
+  const userMessages = request.input.filter(isUser).length;
+  // On Anthropic's API, the effort Claude runs: `none` and `minimal` are its `low`,
+  // so moving between them is no change, and an effort Claude lacks keeps today's request.
+  const effort = provider === 'anthropic' ? claudeEffort(request.reasoning?.effort) : request.reasoning?.effort;
+  const efforts = claudeEffortChanges(thread, userMessages, effort);
+  if (!efforts || efforts.length < 2) return 0;
+  const changes = new Map(efforts.slice(1));
+  const input = [];
+  let count = 0;
+  for (const item of request.input) {
+    if (isUser(item)) {
+      count += 1;
+      if (changes.has(count)) input.push({ type: 'configuration_update', reasoning: { effort: changes.get(count) } });
+    }
+    input.push(item);
+  }
+  request.input = input;
+  request.reasoning = { ...request.reasoning, effort: efforts[0][1] };
+  return changes.size;
+}
+
+// A retry with trimmed history restarts the cache anyway, so it sets the
+// current effort at the top level again, without the update items.
+function withoutEffortUpdates(request) {
+  if (!Array.isArray(request.input)) return request;
+  const updates = request.input.filter(item => item?.type === 'configuration_update');
+  if (updates.length === 0) return request;
+  return {
+    ...request,
+    reasoning: { ...request.reasoning, effort: updates.at(-1).reasoning.effort },
+    input: request.input.filter(item => item?.type !== 'configuration_update'),
+  };
 }
 
 // Claude caches a prompt only at a cache_control breakpoint, and OpenRouter's
@@ -183,10 +237,12 @@ function normalizeToolHistoryForOpenRouter(input) {
 // Shapes a request for its upstream in place and reports what changed, for the
 // forwarding log. OpenAI requests only lose other providers' reasoning, and
 // Claude's requests are translated to Messages at the wire (openUpstream).
-export function adaptForUpstream(request, provider, upstreamModel, scope, { protectedSession = false, promptCache = null, endpoints = null } = {}) {
+export function adaptForUpstream(request, provider, upstreamModel, scope, {
+  protectedSession = false, promptCache = null, endpoints = null, thread = null, thinkingBudget = null,
+} = {}) {
   const adaptation = {
     stateReset: false, providerOrder: null, toolHistoryRepairs: null, structuredOutputInstruction: null,
-    promptCachingAdded: false, webSearch: { offered: false, restored: 0 },
+    promptCachingAdded: false, webSearch: { offered: false, restored: 0 }, effortUpdates: 0,
   };
   if (provider === 'openai') {
     request.input = normalizeInputForOpenAI(request.input);
@@ -202,6 +258,7 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, { prot
     // The Messages translation pairs calls with their outputs and adds the cache
     // breakpoint: at the end of the system prompt in `instructions` mode, if there is one.
     adaptation.promptCachingAdded = !promptCache || (promptCache === 'instructions' && hasSystemPrompt(request));
+    adaptation.effortUpdates = addEffortUpdates(request, provider, upstreamModel, thread, { thinkingBudget });
     return adaptation;
   }
   // Claude's signed thinking is readable only on Anthropic's API.
@@ -233,6 +290,7 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, { prot
   // breakpoint in the caller's own body included.
   if (promptCache && upstreamModel.startsWith('anthropic/')) delete request.cache_control;
   adaptation.promptCachingAdded = !promptCache && addClaudePromptCaching(request, upstreamModel);
+  adaptation.effortUpdates = addEffortUpdates(request, provider, upstreamModel, thread);
   return adaptation;
 }
 
@@ -366,7 +424,8 @@ function compactOpenRouterHistory(input, requestBytes) {
   };
 }
 
-export function prepareOpenRouterRecovery(parsed, primaryBody, structuredOutputInstruction) {
+export function prepareOpenRouterRecovery(primary, primaryBody, structuredOutputInstruction) {
+  const parsed = withoutEffortUpdates(primary);
   // `parsed` already carries the OpenRouter state, reasoning, and tool-history
   // normalization, so the retry only changes which history items are sent.
   // Encrypted reasoning is bound to the provider that produced it; drop it

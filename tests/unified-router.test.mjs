@@ -2389,6 +2389,154 @@ test('Claude\'s stream reaches Codex as Responses events, and its signed thinkin
   }
 });
 
+const userText = text => ({ type: 'message', role: 'user', content: [{ type: 'input_text', text }] });
+const assistantText = text => ({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] });
+const effortRequest = (model, effort, input) => ({ model, stream: true, reasoning: { effort, summary: 'auto' }, input,
+  tools: [{ type: 'function', name: 'exec_command', parameters: { type: 'object', properties: { cmd: { type: 'string' } } } }] });
+
+test('Codex changes Claude\'s effort mid-thread on Anthropic\'s API without changing the earlier messages', async () => {
+  const model = 'anthropic/claude-fable-5-2';
+  const thread = inClaudeSession('effort-anthropic');
+  const plan = [userText('Context.'), userText('Plan the migration.')];
+  const first = await send(effortRequest(model, 'high', plan), thread);
+  assert.equal(first.body.model, 'claude-fable-5-2');
+  assert.deepEqual(first.body.output_config, { effort: 'high' });
+  assert.equal(first.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01');
+
+  // The thread's first effort stays at the top level; the change sits just before the user message that brought it.
+  const planned = [...plan, claudeThinking('Plan it.', 'sig-plan'), assistantText('Here is the plan.')];
+  const renamed = [...planned, userText('Rename the config file.')];
+  const second = await send(effortRequest(model, 'low', renamed), thread);
+  assert.deepEqual(second.body.output_config, { effort: 'high' });
+  assert.equal(second.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01,mid-conversation-output-config-2026-07-01');
+  assert.deepEqual(second.body.messages, [
+    { role: 'user', content: [{ type: 'text', text: 'Context.' }, { type: 'text', text: 'Plan the migration.' }] },
+    { role: 'assistant', content: [{ type: 'thinking', thinking: 'Plan it.', signature: 'sig-plan' },
+      { type: 'text', text: 'Here is the plan.' }] },
+    { role: 'system', content: [], output_config: { effort: 'low' } },
+    { role: 'user', content: [{ type: 'text', text: 'Rename the config file.' }] },
+  ]);
+  assert.equal(parsedLogEntries().findLast(entry => entry.event === 'request.forwarded').effortUpdates, 1);
+
+  // A tool step and a later change keep every earlier message as it was sent, so the cache holds.
+  const stepped = [...renamed, claudeThinking('Rename it.', 'sig-mv'),
+    { type: 'function_call', call_id: 'toolu_mv', name: 'exec_command', arguments: '{"cmd":"mv a b"}' },
+    { type: 'function_call_output', call_id: 'toolu_mv', output: 'ok' }];
+  const third = await send(effortRequest(model, 'low', stepped), thread);
+  assert.deepEqual(third.body.messages.slice(0, second.body.messages.length), second.body.messages);
+  const fourth = await send(effortRequest(model, 'xhigh', [...stepped, assistantText('Renamed.'), userText('Thanks.')]), thread);
+  assert.deepEqual(fourth.body.output_config, { effort: 'high' });
+  assert.deepEqual(fourth.body.messages.slice(0, third.body.messages.length), third.body.messages);
+  assert.deepEqual(fourth.body.messages.slice(-2), [
+    { role: 'system', content: [], output_config: { effort: 'xhigh' } },
+    { role: 'user', content: [{ type: 'text', text: 'Thanks.' }] },
+  ]);
+  assert.equal(fourth.body.messages.filter(message => message.role === 'system').length, 2);
+
+  // A shorter history, after compaction or a rewind, drops the changes past its end.
+  // A second effort for the same user message replaces the first.
+  const compacted = await send(effortRequest(model, 'max', [userText('Summary.'), userText('Continue.'), userText('More.')]), thread);
+  assert.deepEqual(compacted.body.output_config, { effort: 'high' });
+  assert.deepEqual(compacted.body.messages, [
+    { role: 'user', content: [{ type: 'text', text: 'Summary.' }, { type: 'text', text: 'Continue.' }] },
+    { role: 'system', content: [], output_config: { effort: 'max' } },
+    { role: 'user', content: [{ type: 'text', text: 'More.' }] },
+  ]);
+});
+
+test('a Claude request without an effort change goes out as before the effort updates', async () => {
+  const model = 'anthropic/claude-fable-5-2';
+  const turns = [userText('Plan.'), assistantText('Planned.'), userText('Go on.')];
+  // A thread whose effort never changed matches a request with no session at all.
+  await send(effortRequest(model, 'medium', turns.slice(0, 1)), inClaudeSession('effort-steady'));
+  const steady = await send(effortRequest(model, 'medium', turns), inClaudeSession('effort-steady'));
+  const sessionless = await send(effortRequest(model, 'medium', turns));
+  assert.deepEqual(steady.body, sessionless.body);
+  assert.equal(steady.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01');
+  assert.deepEqual(steady.body.output_config, { effort: 'medium' });
+  // Claude runs `low`, `minimal`, and `none` alike at low, so moving between them changes nothing for it.
+  await send(effortRequest(model, 'low', turns.slice(0, 1)), inClaudeSession('effort-same-for-claude'));
+  const same = await send(effortRequest(model, 'none', turns), inClaudeSession('effort-same-for-claude'));
+  assert.deepEqual(same.body, (await send(effortRequest(model, 'none', turns))).body);
+  assert.equal(same.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01');
+  // A model without per-message effort, and a declared thinking budget, keep the top-level effort.
+  for (const [slug, headers] of [['anthropic/claude-opus-4-8', {}], [model, { 'x-codex-router-thinking-budget': '2048' }]]) {
+    const thread = { ...inClaudeSession(`effort-top-level-${slug}-${Object.keys(headers).length}`), ...headers };
+    await send(effortRequest(slug, 'high', turns.slice(0, 1)), thread);
+    const changed = await send(effortRequest(slug, 'low', turns), thread);
+    assert.ok(!changed.body.messages.some(message => message.role === 'system'), slug);
+    assert.equal(changed.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01', slug);
+    if (!headers['x-codex-router-thinking-budget']) assert.deepEqual(changed.body.output_config, { effort: 'low' });
+  }
+  // Spawned agents share their parent's session ID; each thread keeps its own effort.
+  await send(effortRequest(model, 'high', turns.slice(0, 1)), { 'session-id': 'effort-tree', 'thread-id': 'effort-tree' });
+  const worker = await send(effortRequest(model, 'low', turns), { 'session-id': 'effort-tree', 'thread-id': 'effort-worker' });
+  assert.deepEqual(worker.body.output_config, { effort: 'low' });
+  assert.ok(!worker.body.messages.some(message => message.role === 'system'));
+});
+
+test('Codex changes Claude\'s effort mid-thread on OpenRouter with a configuration_update item', async () => {
+  const turns = [userText('Plan.'), assistantText('Planned.'), userText('Go on.')];
+  const thread = inClaudeSession('effort-openrouter');
+  const first = await send(effortRequest('openrouter/anthropic/claude-fable-5.2', 'high', turns.slice(0, 1)), thread);
+  assert.equal(first.hostname, 'openrouter.ai');
+  assert.ok(!first.body.input.some(item => item.type === 'configuration_update'));
+  const second = await send(effortRequest('openrouter/anthropic/claude-fable-5.2', 'low', turns), thread);
+  assert.equal(second.body.model, 'anthropic/claude-fable-5.2');
+  assert.deepEqual(second.body.reasoning, { effort: 'high', summary: 'auto' });
+  assert.deepEqual(second.body.input, [turns[0], turns[1], { type: 'configuration_update', reasoning: { effort: 'low' } }, turns[2]]);
+  // OpenRouter lists no configuration_update for Claude Opus 5.5, so its change stays at the top level.
+  const opus = inClaudeSession('effort-openrouter-opus');
+  await send(effortRequest('openrouter/anthropic/claude-opus-5.5', 'high', turns.slice(0, 1)), opus);
+  const changed = await send(effortRequest('openrouter/anthropic/claude-opus-5.5', 'low', turns), opus);
+  assert.deepEqual(changed.body.reasoning, { effort: 'low', summary: 'auto' });
+  assert.deepEqual(changed.body.input, turns);
+});
+
+test('a rejected Claude step with effort updates is retried with the current effort at the top level', async t => {
+  const turns = [userText('Plan.'), assistantText('Planned.'), userText('Go on.')];
+  const thread = inClaudeSession('effort-recovery');
+  await send(effortRequest('openrouter/anthropic/claude-fable-5.2', 'high', turns.slice(0, 1)), thread);
+  mockUpstreamSequence(t, [
+    { status: 400, body: JSON.stringify({ error: { message: 'invalid request', code: 400 } }) },
+    { status: 200, contentType: 'text/event-stream',
+      body: 'data: {"type":"response.completed","response":{"id":"resp_effort","end_turn":true}}\n\n' },
+  ]);
+  const before = forwarded.length;
+  const result = await exchangeRaw(JSON.stringify(effortRequest('openrouter/anthropic/claude-fable-5.2', 'low', turns)), thread);
+  assert.equal(result.status, 200);
+  assert.equal(forwarded.length, before + 2);
+  assert.ok(forwarded.at(-2).body.input.some(item => item.type === 'configuration_update'));
+  assert.deepEqual(forwarded.at(-1).body.reasoning, { effort: 'low', summary: 'auto' });
+  assert.deepEqual(forwarded.at(-1).body.input, turns);
+});
+
+test('Claude\'s progress notes between tool calls reach Codex as reasoning summaries on both routes', async t => {
+  const note = (text, signature) => ({ start: { type: 'thinking', thinking: '', signature: '' },
+    deltas: [{ type: 'thinking_delta', thinking: text }, { type: 'signature_delta', signature }] });
+  const call = id => ({ start: { type: 'tool_use', id, name: 'exec_command', input: {} },
+    deltas: [{ type: 'input_json_delta', partial_json: '{"cmd":"ls"}' }] });
+  const openrouterEvents = [
+    { type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', id: 'rs_note', summary: [] } },
+    { type: 'response.reasoning_summary_text.delta', item_id: 'rs_note', output_index: 0, summary_index: 0, delta: 'Listing the tree next.' },
+    { type: 'response.completed', response: { id: 'resp_note', status: 'completed', output: [] } },
+  ];
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([note('Checking the files first.', 'sig-n1'), call('toolu_n1'),
+      note('Now the tests.', 'sig-n2'), call('toolu_n2')], { stopReason: 'tool_use' }) },
+    { status: 200, contentType: 'text/event-stream', body: openrouterEvents.map(event => `data: ${JSON.stringify(event)}\n\n`).join('') },
+  ]);
+  const anthropic = parseSse((await exchangeRaw(claudeRequest('Look around.', { reasoning: { effort: 'high', summary: 'auto' } }))).rawBody);
+  assert.deepEqual(forwarded.at(-1).body.thinking.display, 'summarized');
+  assert.deepEqual(anthropic.filter(event => event.type === 'response.output_item.done').map(event => event.item.type),
+    ['reasoning', 'function_call', 'reasoning', 'function_call']);
+  assert.deepEqual(anthropic.filter(event => event.type === 'response.reasoning_summary_text.delta').map(event => event.delta),
+    ['Checking the files first.', 'Now the tests.']);
+  const openrouter = parseSse((await exchangeRaw(JSON.stringify(effortRequest('openrouter/anthropic/claude-fable-5.2', 'high', 'Look around.')))).rawBody);
+  assert.deepEqual(forwarded.at(-1).body.reasoning, { effort: 'high', summary: 'auto' });
+  assert.equal(openrouter.find(event => event.type === 'response.reasoning_summary_text.delta').delta, 'Listing the tree next.');
+});
+
 test('Claude\'s stop reasons and stream errors end the response the way Codex expects', async t => {
   const text = { start: { type: 'text', text: '' }, deltas: [{ type: 'text_delta', text: 'Partial' }] };
   mockUpstreamSequence(t, [

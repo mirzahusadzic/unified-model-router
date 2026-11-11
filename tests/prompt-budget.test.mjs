@@ -38,6 +38,7 @@ const reviewed = {
     // Upper bounds for a fresh thread's request, about 10% above the measured
     // 27,826, 27,832, 27,836, 27,844, and 30,311 request bytes and 17,319 tool bytes.
     budgets: {
+      'anthropic/claude-fable-5-2': { requestBytes: 30600, toolBytes: 19000 },
       'anthropic/claude-opus-5-5': { requestBytes: 30600, toolBytes: 19000 },
       'anthropic/claude-sonnet-5-5': { requestBytes: 30600, toolBytes: 19000 },
       'deepseek/deepseek-v4.1-flash-1017': { requestBytes: 30600, toolBytes: 19000 },

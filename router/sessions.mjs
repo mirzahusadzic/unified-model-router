@@ -1,5 +1,6 @@
 // What the router remembers per Codex session: its provider-isolation side,
-// its Claude route, and an Ultra Spark lead's tool call IDs.
+// its Claude route, a Claude thread's effort changes, and an Ultra Spark lead's
+// tool call IDs.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { anthropicApiKey, envFile, fileEnvironment, logEvent, openrouterApiKey, persistJson } from './config.mjs';
@@ -139,6 +140,57 @@ export function claudeRoute(sessionId, { fallback = true } = {}) {
   if (!fallback) return 'anthropic';
   if ((anthropicApiKey && Date.now() >= anthropicUnavailableUntil) || !openrouterApiKey) return 'anthropic';
   return 'openrouter';
+}
+
+// A Claude thread's effort changes, so a change can go into the conversation
+// instead of the top-level effort, which would restart the prompt cache. Each
+// record lists [user message count, effort] pairs: the effort the thread
+// started with, then each change at the count of Codex user messages its
+// request held. The history is append-only, so every later request can place
+// the same changes at the same messages. Records are kept per thread, since
+// spawned agents share their parent's session ID, and follow the isolation
+// records' retention.
+const claudeEffortsFile = join(dirname(envFile), 'claude-efforts.json');
+const claudeEfforts = loadClaudeEfforts();
+const maxEffortChanges = 64;
+
+function loadClaudeEfforts() {
+  try {
+    const stored = JSON.parse(readFileSync(claudeEffortsFile, 'utf8'));
+    const cutoff = Date.now() - sessionSideRetentionMs;
+    return new Map(Object.entries(stored).filter(([, entry]) => entry?.at > cutoff && Array.isArray(entry.efforts)
+      && entry.efforts.length > 0 && entry.efforts.every(pair => Array.isArray(pair) && Number.isInteger(pair[0])
+        && pair[0] > 0 && typeof pair[1] === 'string')));
+  } catch (error) {
+    if (error.code !== 'ENOENT') logEvent('error', 'claude.efforts_load_failed', { errorCode: error.code || null });
+    return new Map();
+  }
+}
+
+// Records this request's effort for its thread and returns the thread's
+// [user message count, effort] pairs, the first being the thread's starting
+// effort. A history shorter than a recorded change, after compaction or a
+// rewind, drops that change; a second effort for the same user message
+// replaces the first.
+export function claudeEffortChanges(thread, userMessages, effort) {
+  if (!thread || !Number.isInteger(userMessages) || userMessages < 1 || typeof effort !== 'string') return null;
+  const recorded = current(claudeEfforts.get(thread));
+  const efforts = (recorded?.efforts ?? []).filter(([count]) => count <= userMessages);
+  const last = efforts.at(-1);
+  if (!last) efforts.push([userMessages, effort]);
+  else if (last[1] !== effort) {
+    if (last[0] === userMessages) efforts.pop();
+    if (efforts.at(-1)?.[1] !== effort) efforts.push([userMessages, effort]);
+  }
+  while (efforts.length > maxEffortChanges) efforts.splice(1, 1);
+  const unchanged = recorded && JSON.stringify(recorded.efforts) === JSON.stringify(efforts);
+  if (!unchanged || Date.now() - recorded.at >= sessionSideRefreshMs) {
+    const cutoff = Date.now() - sessionSideRetentionMs;
+    for (const [id, entry] of claudeEfforts) if (entry.at <= cutoff) claudeEfforts.delete(id);
+    claudeEfforts.set(thread, { efforts, at: Date.now() });
+    persistJson(claudeEffortsFile, Object.fromEntries(claudeEfforts), 'claude.efforts_persist_failed');
+  }
+  return efforts;
 }
 
 // Ultra Spark workers must start with fork_context: false, but only the prompt

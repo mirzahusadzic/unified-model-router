@@ -13,6 +13,8 @@ const anthropicVersion = '2026-10-21';
 // The binding control lets a request whose history changed run without the
 // thinking blocks the change invalidated, instead of failing.
 const anthropicBeta = 'thinking-binding-controls-2026-08-01';
+// Sent only with a request that changes effort inside the conversation.
+const effortUpdateBeta = 'mid-conversation-output-config-2026-07-01';
 
 // The Messages body is measured again after translation.
 export function anthropicHeaders(apiKey, bodyLength) {
@@ -31,6 +33,8 @@ export const anthropicMaxTokensLimit = 128000;
 // encrypted_content, which Codex stores and sends back unchanged.
 const anthropicThinkingPrefix = 'codex-router-anthropic-thinking:v1:';
 const claudeEfforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+// Claude has no `none` or `minimal`; they become `low`.
+export const claudeEffort = effort => (claudeEfforts.has(effort) ? effort : ['none', 'minimal'].includes(effort) ? 'low' : null);
 
 export function isAnthropicThinking(item) {
   return item?.type === 'reasoning' && typeof item.encrypted_content === 'string'
@@ -148,7 +152,9 @@ function claudeTools(tools) {
 // The conversation as Messages. Codex's opening developer messages join the
 // instructions in `system`; a later one becomes a system message just before
 // Claude's next turn, which keeps the cached prefix and Claude's signed
-// thinking valid. A step's items (thinking, text, calls) form one assistant
+// thinking valid. A configuration_update item, the router's own effort change
+// (see addEffortUpdates), becomes an effort-only system message in its place.
+// A step's items (thinking, text, calls) form one assistant
 // turn, and its results follow in the next user turn. A call Codex never
 // answered is left out, as is an output without its call.
 function claudeMessages(request) {
@@ -216,6 +222,12 @@ function claudeMessages(request) {
     } else if (type === 'message') {
       closeTurn();
       append('user', claudeContent(item.content));
+    } else if (type === 'configuration_update') {
+      const effort = claudeEffort(item.reasoning?.effort);
+      if (effort) {
+        closeTurn();
+        messages.push({ role: 'system', content: [], output_config: { effort } });
+      }
     } else if (['function_call_output', 'custom_tool_call_output'].includes(type)) {
       // An output ends the step that made its call; its results follow that step's turn.
       if (turn?.calls.includes(item.call_id)) closeTurn();
@@ -278,14 +290,15 @@ export function messagesRequest(request, { promptCache = null, thinkingBudget = 
   if (promptCache === 'instructions' && system.length > 0) {
     system[system.length - 1] = { ...system.at(-1), cache_control: { type: 'ephemeral' } };
   }
-  const effort = thinkingBudget ? undefined : request.reasoning?.effort;
+  const effort = thinkingBudget ? null : claudeEffort(request.reasoning?.effort);
   const outputConfig = {
-    ...(claudeEfforts.has(effort) ? { effort } : ['none', 'minimal'].includes(effort) ? { effort: 'low' } : {}),
+    ...(effort ? { effort } : {}),
     ...(request.text?.format?.type === 'json_schema' && isObject(request.text.format.schema)
       ? { format: { type: 'json_schema', schema: request.text.format.schema } } : {}),
   };
   return {
     declared,
+    betas: messages.some(message => message.output_config) ? [effortUpdateBeta] : [],
     body: {
       model: request.model,
       max_tokens: messagesMaxTokens(request),

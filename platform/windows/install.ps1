@@ -344,10 +344,12 @@ Start Codex with a model, or switch with /model:
     codex -m openrouter/meta/muse-spark-1.3-contributor
   GPT-6.1 Sol (OpenRouter)
     codex -m openrouter/openai/gpt-6.1-sol
-  Claude Sonnet 5.5
-    codex -m anthropic/claude-sonnet-5-5
+  Claude Fable 5.2
+    codex -m anthropic/claude-fable-5-2
   Claude Opus 5.5
     codex -m anthropic/claude-opus-5-5
+  Claude Sonnet 5.5
+    codex -m anthropic/claude-sonnet-5-5
 '@
 if ($NativeModels -eq 'show') {
     Write-Host "  GPT-6 Astra (requires a ChatGPT plan)`n    codex -m gpt-6-astra"

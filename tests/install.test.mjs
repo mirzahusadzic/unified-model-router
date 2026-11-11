@@ -146,7 +146,7 @@ test('installs with a key file, and fails without a key when it cannot prompt', 
       'openrouter/meta/muse-spark-1.3',
       'openrouter/meta/muse-spark-1.3-contributor',
       'openrouter/openai/gpt-6.1-sol',
-      'anthropic/claude-sonnet-5-5', 'anthropic/claude-opus-5-5']) {
+      'anthropic/claude-fable-5-2', 'anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5']) {
       assert.match(summary, new RegExp(`^ {4}codex -m ${slug.replaceAll('.', '\\.')}\\r?$`, 'm'));
     }
     assert.equal(/^ {4}codex -m gpt-6-astra\r?$/m.test(summary), nativeShown);
@@ -218,7 +218,7 @@ test('install.mjs runs the platform installer and verifier with translated flags
   assert.equal(verified.status, 0, verified.stderr);
   assert.match(verified.stdout, /Install looks valid/);
   // The fake Codex bundles no native models, so the report lists only router models.
-  assert.match(verified.stdout, /^Router models: anthropic\/claude-opus-5-5, anthropic\/claude-sonnet-5-5, deepseek\/deepseek-v4\.1-flash-1017, ultra-spark\/deepseek-v4\.1-flash-1017, /m);
+  assert.match(verified.stdout, /^Router models: anthropic\/claude-fable-5-2, anthropic\/claude-opus-5-5, anthropic\/claude-sonnet-5-5, deepseek\/deepseek-v4\.1-flash-1017, ultra-spark\/deepseek-v4\.1-flash-1017, /m);
   assert.match(verified.stdout, /^Native OpenAI models: hidden from \/model\r?$/m);
   for (const args of [['--bogus'], ['--verify', '--force'], ['--api-key-file'], ['--verify', '--change-api-key'],
     ['--change-api-key', '--api-key-file', keyFile]]) {

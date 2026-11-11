@@ -140,7 +140,7 @@ logs | jq -c 'select(.event == "router.ready")
 | To find out | Look for |
 | --- | --- |
 | What went upstream? | `request.forwarded`: route, model, attempt, payload SHA-256, byte length, input item count, routing policy |
-| Did the router change the request? | `request.forwarded`: `providerOrder`, `dataCollection`, `structuredOutputAdapted` (DeepSeek JSON mode), `promptCachingAdded` (Claude's `cache_control`), `promptCache` (a caller's `X-Codex-Router-Prompt-Cache`, else `default`), `requestDataPolicy` (a caller's `X-Codex-Router-Data-Policy`, else `default`), `webSearchOverride`, a reset of OpenRouter response state, and tool-history repairs |
+| Did the router change the request? | `request.forwarded`: `providerOrder`, `dataCollection`, `structuredOutputAdapted` (DeepSeek JSON mode), `promptCachingAdded` (Claude's `cache_control`), `effortUpdates` (Claude effort changes placed in the conversation), `promptCache` (a caller's `X-Codex-Router-Prompt-Cache`, else `default`), `requestDataPolicy` (a caller's `X-Codex-Router-Data-Policy`, else `default`), `webSearchOverride`, a reset of OpenRouter response state, and tool-history repairs |
 | Which tool records were repaired? | `history.repaired`: invalid, duplicate, unanswered, or orphaned tool records, and native tool declarations, before an OpenRouter request |
 | Were numbers in tool arguments rewritten? | `tool_arguments.normalized`: the tool whose whole-number floats became integers |
 | How did the request end, and how long did it take? | `request.finished`: local HTTP status (`error` level when `status >= 400`) and total duration; `request.aborted`: the client disconnected first |
@@ -211,7 +211,7 @@ logs | jq -c 'select(.event == "anthropic.refused")
 | To find out | Look for |
 | --- | --- |
 | Why was a request refused with HTTP 409? | `session.provider_isolation`: the recorded and requested sides; `data_policy.refused`: a training-tier model under the deny data policy; `session.forked_lead_context`: a spawned agent sent an Ultra Spark Contributor lead's tool call IDs to a training-tier model, with the model and the number of matching IDs (`forkedCallIds`) |
-| Were session records lost? | `session.isolation_persist_failed`, `session.isolation_load_failed`: sides not saved, or not read at startup, so sessions start without one, non-training Ultra Spark sessions included (see Troubleshooting); `claude.routes_persist_failed`, `claude.routes_load_failed`: the same for Claude routes, so sessions pick their route again |
+| Were session records lost? | `session.isolation_persist_failed`, `session.isolation_load_failed`: sides not saved, or not read at startup, so sessions start without one, non-training Ultra Spark sessions included (see Troubleshooting); `claude.routes_persist_failed`, `claude.routes_load_failed`: the same for Claude routes, so sessions pick their route again; `claude.efforts_persist_failed`, `claude.efforts_load_failed`: the same for Claude effort records, so a thread's next effort change restarts its cache |
 
 ```sh
 logs | jq -c 'select(.event == "session.provider_isolation")
