@@ -818,6 +818,16 @@ test('untrusted context sent as a named output without a call ID reaches OpenRou
   assert.deepEqual(native.body.input, input);
 });
 
+test('only Codex\'s exact untrusted form is rewritten: no call ID at all, and a string value, empty included', async () => {
+  const user = { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Go on.' }] };
+  const nulled = { type: 'function_call_output', call_id: null, name: 'goal_objective', namespace: 'agent', output: 'Count the lines' };
+  const empty = { type: 'function_call_output', name: 'goal_objective', namespace: 'agent', output: '' };
+  const upstream = await send({ model: 'deepseek/deepseek-v4.1-flash-1017', input: [user, nulled, empty] });
+  // A null call ID is a broken tool record, dropped as an orphan; an empty value keeps its marker.
+  assert.deepEqual(upstream.body.input, [user, { type: 'message', role: 'user', content: [
+    { type: 'input_text', text: '<external_goal_objective></external_goal_objective>' }] }]);
+});
+
 test('OpenRouter keeps sequential tool rounds separate and orders parallel outputs by call', async () => {
   const firstCall = { type: 'function_call', call_id: 'call_first', name: 'lookup', arguments: '{}' };
   const secondCall = { type: 'function_call', call_id: 'call_second', name: 'lookup', arguments: '{}' };

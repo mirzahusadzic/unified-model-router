@@ -142,18 +142,17 @@ function normalizeStateForOpenRouter(request) {
 // upstreams get the user message Codex sends when that form is off.
 function untrustedContextAsMessages(input) {
   if (!Array.isArray(input)) return input;
-  const converted = input.map(item => {
-    if (item?.type !== 'function_call_output' || item.call_id != null
-      || typeof item.name !== 'string' || !item.name) return item;
-    const text = typeof item.output === 'string' ? item.output
-      : Array.isArray(item.output) ? item.output.map(part => part?.text).filter(part => typeof part === 'string').join('\n')
-        : '';
-    if (!text) return item;
-    return { type: 'message', role: 'user', content: [
-      { type: 'input_text', text: `<external_${item.name}>${text}</external_${item.name}>` },
-    ] };
-  });
+  const converted = input.map(item => (isUntrustedContextOutput(item)
+    ? { type: 'message', role: 'user', content: [
+      { type: 'input_text', text: `<external_${item.name}>${item.output}</external_${item.name}>` }] }
+    : item));
   return converted.some((item, index) => item !== input[index]) ? converted : input;
+}
+
+// Exactly Codex's form: no call ID at all, a name, and text, empty included.
+function isUntrustedContextOutput(item) {
+  return item?.type === 'function_call_output' && !Object.hasOwn(item, 'call_id')
+    && typeof item.name === 'string' && item.name.length > 0 && typeof item.output === 'string';
 }
 
 function normalizeToolHistoryForOpenRouter(input) {
