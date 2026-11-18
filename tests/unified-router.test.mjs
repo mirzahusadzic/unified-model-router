@@ -828,6 +828,45 @@ test('only Codex\'s exact untrusted form is rewritten: no call ID at all, and a 
     { type: 'input_text', text: '<external_goal_objective></external_goal_objective>' }] }]);
 });
 
+test('a recovery that trims a goal thread keeps the user\'s task ahead of the goal\'s objective on both routes', async t => {
+  const text = value => [{ type: 'input_text', text: value }];
+  const task = 'Count the non-blank lines and keep the file mode.';
+  const objective = '<external_goal_objective>Count lines</external_goal_objective>';
+  const history = [
+    { type: 'message', role: 'developer', content: text('Rules.') },
+    { type: 'message', role: 'user', content: text('Earlier task.') },
+    { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Done.' }] },
+    { type: 'message', role: 'user', content: text(task) },
+    { type: 'function_call', call_id: 'call_goal', name: 'create_goal', arguments: '{"objective":"Count lines"}' },
+    { type: 'function_call_output', call_id: 'call_goal', output: '{"goal":{"status":"active"}}' },
+    // Codex 0.170 records the objective here, ahead of the turn's later steps.
+    { type: 'function_call_output', name: 'goal_objective', namespace: 'agent', output: 'Count lines' },
+    ...Array.from({ length: 45 }, (_, index) => [
+      { type: 'function_call', call_id: `call_step_${index}`, name: 'exec_command', arguments: '{}' },
+      { type: 'function_call_output', call_id: `call_step_${index}`, output: `result ${index}` },
+    ]).flat(),
+  ];
+  mockUpstreamSequence(t, [
+    { status: 400, body: JSON.stringify({ error: { message: 'invalid request', code: 400 } }) },
+    { status: 200, contentType: 'text/event-stream',
+      body: 'data: {"type":"response.completed","response":{"id":"resp_goal_recovery","end_turn":true}}\n\n' },
+    { status: 400, body: JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'invalid request' } }) },
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([]) },
+  ]);
+  const before = forwarded.length;
+  await exchangeRaw(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: history }));
+  const openrouter = JSON.stringify(forwarded.at(-1).body.input);
+  await exchangeRaw(claudeRequest(history));
+  const claude = JSON.stringify(forwarded.at(-1).body.messages);
+  assert.equal(forwarded.length, before + 4);
+  for (const retry of [openrouter, claude]) {
+    assert.ok(retry.includes(objective), 'the objective survives');
+    assert.ok(retry.includes(task), 'the task survives');
+    assert.ok(retry.indexOf(task) < retry.indexOf(objective));
+    assert.ok(!retry.includes('"result 0"'), 'the retry is trimmed');
+  }
+});
+
 test('OpenRouter keeps sequential tool rounds separate and orders parallel outputs by call', async () => {
   const firstCall = { type: 'function_call', call_id: 'call_first', name: 'lookup', arguments: '{}' };
   const secondCall = { type: 'function_call', call_id: 'call_second', name: 'lookup', arguments: '{}' };

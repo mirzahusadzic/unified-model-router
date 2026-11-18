@@ -155,6 +155,15 @@ function isUntrustedContextOutput(item) {
     && typeof item.name === 'string' && item.name.length > 0 && typeof item.output === 'string';
 }
 
+// The key of Codex's message form of untrusted context, whether Codex or the
+// router wrote it, or null for any other item.
+function untrustedContextKey(item) {
+  if (!isMessageForRole(item, 'user') || !Array.isArray(item.content) || item.content.length !== 1) return null;
+  const [part] = item.content;
+  if (part?.type !== 'input_text' || typeof part.text !== 'string') return null;
+  return /^<external_([^>]+)>[\s\S]*<\/external_\1>$/.exec(part.text)?.[1] ?? null;
+}
+
 function normalizeToolHistoryForOpenRouter(input) {
   const repairs = {
     changed: false,
@@ -401,14 +410,22 @@ function compactOpenRouterHistory(input, requestBytes) {
     return { input, changed: false, droppedItems: 0, strategy: null, omissionNotice: false };
   }
 
-  const lastUserIndex = input.findLastIndex(item => isMessageForRole(item, 'user'));
+  // Untrusted context, such as a goal's objective, follows the task it came
+  // from, so it is never taken for the task; its latest value per key is kept.
+  const untrusted = new Map();
+  for (const [index, item] of input.entries()) {
+    const key = untrustedContextKey(item);
+    if (key !== null) untrusted.set(key, index);
+  }
+  const lastUserIndex = input.findLastIndex(item => isMessageForRole(item, 'user') && untrustedContextKey(item) === null);
   const lastDeveloperIndex = input.findLastIndex(item => isMessageForRole(item, 'developer'));
   const context = codexContextIndexes(input);
   // Codex's context, the current developer context and the task statement
   // always survive, even when the rest of the latest turn has to be cut to a
   // recent tail. Dropping Codex's context would remove the rules the thread
   // runs under (AGENTS.md among them) and any compaction summary for this step.
-  const pinned = new Set([...context, lastDeveloperIndex, lastUserIndex].filter(index => index >= 0));
+  const pinned = new Set([...context, lastDeveloperIndex, lastUserIndex, ...untrusted.values()]
+    .filter(index => index >= 0));
   const itemBytes = index => Buffer.byteLength(JSON.stringify(input[index]) ?? '');
   const notice = omissionNotice();
   // Reserve room for the omission notice so the retry stays within both limits.
