@@ -3134,6 +3134,35 @@ test('the router\'s search never takes over a caller\'s own tool named web_searc
     ['function_call:docs']);
 });
 
+test('Claude\'s Messages translation of a parallel tool round grows linearly with its calls', async () => {
+  const { messagesRequest } = await import('../router/anthropic.mjs');
+  const round = count => ({ model: 'claude-sonnet-5-5', input: [
+    { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Run the checks.' }] },
+    ...Array.from({ length: count }, (_, index) => ({ type: 'function_call', call_id: `call_${index}`, name: 'lookup', arguments: '{}' })),
+    ...Array.from({ length: count }, (_, index) => ({ type: 'function_call_output', call_id: `call_${index}`, output: `result ${index}` })),
+  ] });
+  // Count the elements array scans inspect while translating.
+  const scans = count => {
+    const originals = { includes: Array.prototype.includes, indexOf: Array.prototype.indexOf };
+    let inspected = 0;
+    for (const [name, original] of Object.entries(originals)) {
+      Array.prototype[name] = function (...args) {
+        inspected += this.length;
+        return original.apply(this, args);
+      };
+    }
+    try {
+      messagesRequest(round(count));
+    } finally {
+      Object.assign(Array.prototype, originals);
+    }
+    return inspected;
+  };
+  const small = scans(100);
+  const large = scans(200);
+  assert.ok(large <= 2.5 * small + 1000, `doubling the calls took scans from ${small} to ${large} elements`);
+});
+
 test('Claude keeps tool names apart and an earlier tool result as it first saw it', async () => {
   const tool = name => ({ type: 'function', name, parameters: { type: 'object' } });
   const { body } = await send(JSON.parse(claudeRequest('Hello', { tools: [tool('a.b'), tool('a_b')] })));

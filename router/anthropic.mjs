@@ -189,8 +189,9 @@ function claudeMessages(request) {
   };
   const closeTurn = () => {
     if (!turn) return;
-    const answered = turn.calls.filter(callId => outputs.has(callId));
-    const content = turn.content.filter(block => block.type !== 'tool_use' || answered.includes(block.callId))
+    const answered = [...turn.calls].filter(callId => outputs.has(callId));
+    const answeredIds = new Set(answered);
+    const content = turn.content.filter(block => block.type !== 'tool_use' || answeredIds.has(block.callId))
       .map(({ callId, ...block }) => block);
     // A turn of thinking alone has nothing to reply to.
     if (content.some(block => !['thinking', 'redacted_thinking'].includes(block.type))) {
@@ -202,7 +203,7 @@ function claudeMessages(request) {
   const openTurn = () => {
     if (turn) return;
     flushDeveloper();
-    turn = { content: [], calls: [] };
+    turn = { content: [], calls: new Set() };
   };
   for (const item of input) {
     const type = item?.type ?? (item?.role ? 'message' : null);
@@ -230,7 +231,7 @@ function claudeMessages(request) {
       }
     } else if (['function_call_output', 'custom_tool_call_output'].includes(type)) {
       // An output ends the step that made its call; its results follow that step's turn.
-      if (turn?.calls.includes(item.call_id)) closeTurn();
+      if (turn?.calls.has(item.call_id)) closeTurn();
     } else if (type === 'reasoning') {
       const block = isAnthropicThinking(item) ? decodeAnthropicThinking(item) : null;
       if (block) {
@@ -241,7 +242,7 @@ function claudeMessages(request) {
         && !calls.has(item.call_id)) {
       calls.add(item.call_id);
       openTurn();
-      turn.calls.push(item.call_id);
+      turn.calls.add(item.call_id);
       turn.content.push({
         type: 'tool_use',
         id: claudeCallId(item.call_id),
