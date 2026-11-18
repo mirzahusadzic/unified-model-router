@@ -235,6 +235,22 @@ test('catalog builds read entries from vendor folders', t => {
   assert.deepEqual(catalogFiles(catalogDir), ['vendor-a/model.json', 'vendor-b/model.json']);
 });
 
+test('the catalog list works on Node 20.0, whose readdir ignores the recursive option', async () => {
+  const fs = (await import('node:fs')).default;
+  const { syncBuiltinESMExports } = await import('node:module');
+  const expected = catalogFiles(join(root, 'catalog'));
+  const original = fs.readdirSync;
+  fs.readdirSync = (path, options) => original(path, options?.recursive ? { ...options, recursive: false } : options);
+  syncBuiltinESMExports();
+  try {
+    assert.deepEqual(catalogFiles(join(root, 'catalog')), expected);
+    assert.ok(expected.length > 0 && expected.every(name => /^[a-z]+\/[a-z0-9.-]+\.json$/.test(name)), expected.join(', '));
+  } finally {
+    fs.readdirSync = original;
+    syncBuiltinESMExports();
+  }
+});
+
 test('prompt suffixes must name a file in the prompts directory', () => {
   for (const suffix of ['../secret.md', 'ultra-spark.txt', '/etc/passwd']) {
     assert.throws(() => applyOpenRouterPrompts({ slug: 'openrouter/vendor/model', [suffixField]: suffix }, prompts),
