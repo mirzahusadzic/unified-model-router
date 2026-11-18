@@ -140,13 +140,22 @@ function normalizeStateForOpenRouter(request) {
 // Codex 0.170 sends untrusted context, such as a thread goal's objective, as a
 // named tool output without a call ID, which only OpenAI's API reads. Other
 // upstreams get the user message Codex sends when that form is off.
+// The messages it writes are remembered, so a retry's log counts its own.
+const routerWrittenContext = new WeakSet();
 function untrustedContextAsMessages(input) {
   if (!Array.isArray(input)) return input;
-  const converted = input.map(item => (isUntrustedContextOutput(item)
-    ? { type: 'message', role: 'user', content: [
-      { type: 'input_text', text: `<external_${item.name}>${item.output}</external_${item.name}>` }] }
-    : item));
+  const converted = input.map(item => {
+    if (!isUntrustedContextOutput(item)) return item;
+    const message = { type: 'message', role: 'user', content: [
+      { type: 'input_text', text: `<external_${item.name}>${item.output}</external_${item.name}>` }] };
+    routerWrittenContext.add(message);
+    return message;
+  });
   return converted.some((item, index) => item !== input[index]) ? converted : input;
+}
+
+function countRouterWrittenContext(input) {
+  return Array.isArray(input) ? input.filter(item => routerWrittenContext.has(item)).length : 0;
 }
 
 // Exactly Codex's form: no call ID at all, a name, and text, empty included.
@@ -280,13 +289,14 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, {
 } = {}) {
   const adaptation = {
     stateReset: false, providerOrder: null, toolHistoryRepairs: null, structuredOutputInstruction: null,
-    promptCachingAdded: false, webSearch: { offered: false, restored: 0 }, effortUpdates: 0,
+    promptCachingAdded: false, webSearch: { offered: false, restored: 0 }, effortUpdates: 0, untrustedContext: 0,
   };
   if (provider === 'openai') {
     request.input = normalizeInputForOpenAI(request.input);
     return adaptation;
   }
   request.input = untrustedContextAsMessages(request.input);
+  adaptation.untrustedContext = countRouterWrittenContext(request.input);
   if (provider === 'anthropic') {
     // Searches run through OpenRouter's web plugin, so without its key Codex's search is not offered.
     if (!openrouterApiKey && Array.isArray(request.tools)) {
@@ -501,5 +511,6 @@ export function prepareOpenRouterRecovery(primary, primaryBody, structuredOutput
     droppedReasoningItems,
     inputItems: Array.isArray(recoveryInput) ? recoveryInput.length : null,
     historyRepairs: repaired.repairs,
+    untrustedContext: countRouterWrittenContext(recoveryInput),
   };
 }

@@ -808,6 +808,7 @@ test('untrusted context sent as a named output without a call ID reaches OpenRou
   assert.deepEqual(openrouter.body.input, [user, goalCall, goalResult, asMessage]);
   const forwarded = parsedLogEntries().filter(entry => entry.event === 'request.forwarded').at(-1);
   assert.equal(forwarded.historyRepairs, null);
+  assert.equal(forwarded.untrustedContext, 1);
 
   const claude = await send(JSON.parse(claudeRequest(input)));
   assert.deepEqual(claude.body.messages.at(-1).content.at(-1),
@@ -816,6 +817,7 @@ test('untrusted context sent as a named output without a call ID reaches OpenRou
   // Native requests keep it: OpenAI's API reads the tool-output form.
   const native = await send({ model: 'gpt-6-sol', input });
   assert.deepEqual(native.body.input, input);
+  assert.equal(parsedLogEntries().filter(entry => entry.event === 'request.forwarded').at(-1).untrustedContext, 0);
 });
 
 test('only Codex\'s exact untrusted form is rewritten: no call ID at all, and a string value, empty included', async () => {
@@ -856,6 +858,9 @@ test('a recovery that trims a goal thread keeps the user\'s task ahead of the go
   const before = forwarded.length;
   await exchangeRaw(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: history }));
   const openrouter = JSON.stringify(forwarded.at(-1).body.input);
+  // The retry's log counts the messages it carries.
+  const attempts = parsedLogEntries().filter(entry => entry.event === 'request.forwarded').slice(-2);
+  assert.deepEqual(attempts.map(entry => [entry.attempt, entry.untrustedContext]), [[1, 1], [2, 1]]);
   await exchangeRaw(claudeRequest(history));
   const claude = JSON.stringify(forwarded.at(-1).body.messages);
   assert.equal(forwarded.length, before + 4);

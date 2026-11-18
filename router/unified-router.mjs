@@ -452,6 +452,7 @@ const server = http.createServer((request, response) => {
     const sessionProtected = protectedSession(requestInfo.sessionId) || side === 'private' || requestDataPolicy === 'deny';
     let {
       stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch, effortUpdates,
+      untrustedContext,
     } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, {
       protectedSession: sessionProtected, promptCache, endpoints, thread: effortThread, thinkingBudget,
     });
@@ -483,6 +484,7 @@ const server = http.createServer((request, response) => {
       parsed = JSON.parse(rawBody.toString('utf8'));
       ({
         stateReset, providerOrder, toolHistoryRepairs, structuredOutputInstruction, promptCachingAdded, webSearch, effortUpdates,
+        untrustedContext,
       } = adaptForUpstream(parsed, target.provider, upstreamModel, requestInfo.sessionId, {
         protectedSession: sessionProtected, promptCache, endpoints, thread: effortThread, thinkingBudget,
       }));
@@ -628,6 +630,7 @@ const server = http.createServer((request, response) => {
         promptCachingAdded,
         // A retry drops the effort updates (prepareOpenRouterRecovery).
         effortUpdates: recovery ? 0 : effortUpdates,
+        untrustedContext: recovery ? recovery.untrustedContext : untrustedContext,
         promptCache: promptCache || 'default',
         requestDataPolicy: requestDataPolicy || 'default',
         fallback: claudeFallback ? 'default' : 'none',
@@ -792,6 +795,7 @@ const server = http.createServer((request, response) => {
                     droppedItems: recovery.droppedItems,
                     droppedReasoningItems: recovery.droppedReasoningItems,
                     omissionNotice: recovery.omissionNotice,
+                    untrustedContext: recovery.untrustedContext,
                     historyRepairs: recovery.historyRepairs?.changed ? recovery.historyRepairs : null,
                   });
                   sendUpstream({ requestBody: recovery.body, attempt: 2, recovery });
