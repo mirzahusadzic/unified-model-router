@@ -357,7 +357,7 @@ cp -p "$backup_dir/models.json" "$HOME/.codex/models.json"
 
 | Symptom | Check |
 | --- | --- |
-| Something broke after a Codex update | Compare `codex --version` and `codex app-server daemon version` with the tested version in [Codex version](setup.md#codex-version). Install it with `npm install -g @openai/codex@0.167.0`, then rerun `node install.mjs`, which also pins the daemon. |
+| Something broke after a Codex update | Compare `codex --version` and `codex app-server daemon version` with the tested version in [Codex version](setup.md#codex-version). Install it with `npm install -g @openai/codex@0.170.0`, then rerun `node install.mjs`, which also pins the daemon. |
 | A new model is missing from `/model` | Rerun the installer to rebuild the catalog, then restart Codex. |
 | OpenAI models are missing from `/model` | They are hidden without an active ChatGPT plan; install with `CODEX_ROUTER_NATIVE_MODELS=show` to list them anyway. |
 | Ultra Spark does not spawn workers | Select `ultra-spark-private/deepseek-v4.1-flash-1017` ("· Ultra Spark") or `ultra-spark/deepseek-v4.1-flash-1017` ("· Ultra Spark Contributor") in a new thread, and rerun the installer so the catalog carries the current policy. Small single-step tasks run without workers by design. |

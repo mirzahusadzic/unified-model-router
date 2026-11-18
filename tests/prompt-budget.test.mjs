@@ -26,7 +26,7 @@ const installedVersion = spawnSync('codex', ['--version'], { encoding: 'utf8', s
 const versionSkip = !installedVersion ? 'the Codex CLI is not installed'
   : installedVersion !== testedVersion ? `Codex ${installedVersion} is installed; the expectations are for ${testedVersion}` : false;
 
-// Reviewed on macOS with Codex 0.167.0. Feature defaults and tools can differ
+// Reviewed on macOS with Codex 0.170.0. Feature defaults and tools can differ
 // by platform, so other platforms skip until their expectations are added.
 const reviewed = {
   darwin: {
@@ -36,8 +36,9 @@ const reviewed = {
       'multi_agent_v1.send_input', 'multi_agent_v1.spawn_agent', 'multi_agent_v1.wait_agent', 'request_user_input',
       'update_goal', 'view_image', 'web_search', 'write_stdin',
     ],
-    // Upper bounds for a fresh thread's request, about 10% above the measured
-    // 27,826, 27,832, 27,836, 27,844, and 30,311 request bytes and 17,319 tool bytes.
+    // Upper bounds for a fresh thread's request, about 9% above the measured
+    // 28,097 to 28,131 request bytes (30,598 and 30,664 for the Ultra Sparks)
+    // and 17,445 tool bytes.
     budgets: {
       'anthropic/claude-fable-5-2': { requestBytes: 30600, toolBytes: 19000 },
       'anthropic/claude-opus-5-5': { requestBytes: 30600, toolBytes: 19000 },
@@ -54,19 +55,21 @@ const reviewed = {
     // Features Codex turns on under the installer's configuration.
     features: [
       'api_key_cyber_access_programs', 'api_key_model_discovery', 'auth_elicitation', 'bedrock_setup_wizard',
-      'browser_annotation_api', 'browser_use', 'browser_use_external', 'browser_use_full_cdp_access', 'cli_daybreak',
-      'code_mode_host', 'code_mode_interrupt', 'collaboration_modes', 'compaction_image_budget', 'computer_use',
-      'content_item_kinds', 'daemon_auto_start', 'deferred_tool_world_state', 'enable_request_compression', 'fast_mode', 'goals',
-      'guardian_reuse_parent_compaction', 'hooks', 'image_generation', 'in_app_browser', 'in_app_chat',
-      'in_app_dictation', 'in_app_local_automation', 'in_app_updates', 'in_app_voice', 'incremental_tools',
+      'browser_annotation_api', 'browser_use', 'browser_use_external', 'browser_use_full_cdp_access',
+      'cli_daybreak', 'code_mode_host', 'code_mode_host_grpc', 'code_mode_host_output_truncation',
+      'code_mode_interrupt', 'collaboration_modes', 'compaction_image_budget', 'computer_use', 'content_item_kinds',
+      'daemon_auto_start', 'deferred_tool_world_state', 'enable_request_compression', 'fast_mode', 'goals',
+      'guardian_include_additional_context', 'guardian_reuse_parent_compaction', 'hooks', 'image_generation',
+      'in_app_browser', 'in_app_chat', 'in_app_dictation', 'in_app_local_automation', 'in_app_updates',
+      'in_app_voice', 'incremental_tools', 'incremental_tools_legacy', 'incremental_tools_legacy_gcp',
       'instant_interrupt', 'item_ids', 'mcp_oauth_refresh_coordination', 'mentions_v2', 'multi_agent',
-      'plugin_discovery_prefetch', 'plugin_sharing', 'plugins', 'prediction_preserve_parent_tools', 'realtime_conversation',
-      'reasoning_effort_override', 'remote_plugin', 'resize_all_images', 'shell_snapshot',
-      'shell_tool', 'skill_mcp_dependency_install', 'skill_search', 'sleep_tool', 'sqlite', 'steer',
-      'system_proxy_fallback', 'terminal_resize_reflow', 'tool_call_mcp_elicitation',
+      'plugin_sharing', 'plugins', 'prediction_preserve_parent_tools', 'realtime_conversation',
+      'reasoning_effort_override', 'remote_plugin', 'resize_all_images', 'retain_client_tool_outputs',
+      'shell_snapshot', 'shell_tool', 'skill_mcp_dependency_install', 'skill_search', 'sleep_tool', 'sqlite',
+      'steer', 'system_proxy_fallback', 'terminal_resize_reflow', 'tool_call_mcp_elicitation',
       'tool_search_always_defer_mcp_tools', 'tool_suggest', 'tui_app_server', 'ultrafast_mode',
-      'unbounded_connection_retries', 'unified_exec', 'unified_exec_tty', 'view_image', 'workspace_dependencies',
-      'worktrees', 'write_stdin_approval',
+      'unbounded_connection_retries', 'unified_exec', 'unified_exec_tty', 'unified_image_budget',
+      'untrusted_as_tool_output', 'view_image', 'workspace_dependencies', 'worktrees', 'write_stdin_approval',
     ],
   },
 };
