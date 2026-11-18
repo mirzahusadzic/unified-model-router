@@ -794,6 +794,30 @@ test('OpenRouter drops native tool declarations after a switch from a Responses 
   assert.deepEqual(native.body.input, [declarations, developer, user]);
 });
 
+test('untrusted context sent as a named output without a call ID reaches OpenRouter and Claude as Codex\'s message form', async () => {
+  const user = { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Count them.' }] };
+  const goalCall = { type: 'function_call', call_id: 'call_goal', name: 'create_goal', arguments: '{"objective":"Count the lines"}' };
+  const goalResult = { type: 'function_call_output', call_id: 'call_goal', output: '{"goal":{"status":"active"}}' };
+  // Codex 0.170 sends a thread goal's objective this way.
+  const objective = { type: 'function_call_output', name: 'goal_objective', namespace: 'agent', output: 'Count the lines' };
+  const asMessage = { type: 'message', role: 'user', content: [
+    { type: 'input_text', text: '<external_goal_objective>Count the lines</external_goal_objective>' }] };
+  const input = [user, goalCall, goalResult, objective];
+
+  const openrouter = await send({ model: 'deepseek/deepseek-v4.1-flash-1017', input });
+  assert.deepEqual(openrouter.body.input, [user, goalCall, goalResult, asMessage]);
+  const forwarded = parsedLogEntries().filter(entry => entry.event === 'request.forwarded').at(-1);
+  assert.equal(forwarded.historyRepairs, null);
+
+  const claude = await send(JSON.parse(claudeRequest(input)));
+  assert.deepEqual(claude.body.messages.at(-1).content.at(-1),
+    { type: 'text', text: '<external_goal_objective>Count the lines</external_goal_objective>' });
+
+  // Native requests keep it: OpenAI's API reads the tool-output form.
+  const native = await send({ model: 'gpt-6-sol', input });
+  assert.deepEqual(native.body.input, input);
+});
+
 test('OpenRouter keeps sequential tool rounds separate and orders parallel outputs by call', async () => {
   const firstCall = { type: 'function_call', call_id: 'call_first', name: 'lookup', arguments: '{}' };
   const secondCall = { type: 'function_call', call_id: 'call_second', name: 'lookup', arguments: '{}' };

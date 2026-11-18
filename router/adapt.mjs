@@ -137,6 +137,25 @@ function normalizeStateForOpenRouter(request) {
   return changed;
 }
 
+// Codex 0.170 sends untrusted context, such as a thread goal's objective, as a
+// named tool output without a call ID, which only OpenAI's API reads. Other
+// upstreams get the user message Codex sends when that form is off.
+function untrustedContextAsMessages(input) {
+  if (!Array.isArray(input)) return input;
+  const converted = input.map(item => {
+    if (item?.type !== 'function_call_output' || item.call_id != null
+      || typeof item.name !== 'string' || !item.name) return item;
+    const text = typeof item.output === 'string' ? item.output
+      : Array.isArray(item.output) ? item.output.map(part => part?.text).filter(part => typeof part === 'string').join('\n')
+        : '';
+    if (!text) return item;
+    return { type: 'message', role: 'user', content: [
+      { type: 'input_text', text: `<external_${item.name}>${text}</external_${item.name}>` },
+    ] };
+  });
+  return converted.some((item, index) => item !== input[index]) ? converted : input;
+}
+
 function normalizeToolHistoryForOpenRouter(input) {
   const repairs = {
     changed: false,
@@ -259,6 +278,7 @@ export function adaptForUpstream(request, provider, upstreamModel, scope, {
     request.input = normalizeInputForOpenAI(request.input);
     return adaptation;
   }
+  request.input = untrustedContextAsMessages(request.input);
   if (provider === 'anthropic') {
     // Searches run through OpenRouter's web plugin, so without its key Codex's search is not offered.
     if (!openrouterApiKey && Array.isArray(request.tools)) {
