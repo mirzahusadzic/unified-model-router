@@ -521,7 +521,7 @@ test('Claude and training-tier models never share a session; Claude may share on
 
 test('OpenAI models on OpenRouter stay apart from the training tier, as the native ones do', async () => {
   const inSession = id => ({ 'session-id': id });
-  const sol = 'openrouter/openai/gpt-6.1-sol';
+  const sol = 'openrouter/openai/gpt-6.2-sol';
   const refused = async (model, id, message) => {
     const count = forwarded.length;
     const result = await exchange(JSON.stringify({ model, input: 'Hello' }), inSession(id));
@@ -533,11 +533,11 @@ test('OpenAI models on OpenRouter stay apart from the training tier, as the nati
   // The prefix decides the route, so the native model of the same name is untouched.
   const onOpenRouter = await send({ model: sol, input: 'Hello' }, inSession('isolation-sol'));
   assert.equal(onOpenRouter.hostname, 'openrouter.ai');
-  assert.equal(onOpenRouter.body.model, 'openai/gpt-6.1-sol');
+  assert.equal(onOpenRouter.body.model, 'openai/gpt-6.2-sol');
   assert.equal(onOpenRouter.body.provider.data_collection, 'deny');
-  const native = await send({ model: 'gpt-6.1-sol', input: 'Hello' }, inSession('isolation-sol'));
+  const native = await send({ model: 'gpt-6.2-sol', input: 'Hello' }, inSession('isolation-sol'));
   assert.equal(native.hostname, 'chatgpt.com');
-  assert.equal(native.body.model, 'gpt-6.1-sol');
+  assert.equal(native.body.model, 'gpt-6.2-sol');
   for (const model of ['openrouter/meta/muse-spark-1.3-contributor', 'ultra-spark/deepseek-v4.1-flash-1017']) {
     await refused(model, 'isolation-sol', /already used an OpenAI model/);
   }
@@ -1626,7 +1626,7 @@ test('the model list declares each model\'s training by its weakest route, and h
     'deepseek/deepseek-v4.1-flash-1017': 'endpoint',
     'openrouter/meta/muse-spark-1.3': 'endpoint',
     'openrouter/anthropic/claude-sonnet-5.5': 'endpoint',
-    'openrouter/openai/gpt-6.1-sol': 'endpoint',
+    'openrouter/openai/gpt-6.2-sol': 'endpoint',
     // With an OpenRouter key, a refusal can move Claude there.
     'anthropic/claude-sonnet-5-5': 'endpoint',
   };

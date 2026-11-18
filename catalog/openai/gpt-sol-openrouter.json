@@ -1,7 +1,7 @@
 {
-  "slug": "openrouter/openai/gpt-6.1-sol",
-  "display_name": "GPT-6.1 Sol (OpenRouter)",
-  "description": "OpenAI GPT-6.1 Sol through OpenRouter, billed to OpenRouter credit, separate from the native gpt-6.1-sol",
+  "slug": "openrouter/openai/gpt-6.2-sol",
+  "display_name": "GPT-6.2 Sol (OpenRouter)",
+  "description": "OpenAI GPT-6.2 Sol through OpenRouter, billed to OpenRouter credit, separate from the native gpt-6.2-sol",
   "default_reasoning_level": "low",
   "supported_reasoning_levels": [
     {

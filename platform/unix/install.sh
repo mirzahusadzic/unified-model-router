@@ -383,8 +383,8 @@ Start Codex with a model, or switch with /model:
     codex -m openrouter/meta/muse-spark-1.3
   Muse Spark 1.3 Contributor
     codex -m openrouter/meta/muse-spark-1.3-contributor
-  GPT-6.1 Sol (OpenRouter)
-    codex -m openrouter/openai/gpt-6.1-sol
+  GPT-6.2 Sol (OpenRouter)
+    codex -m openrouter/openai/gpt-6.2-sol
   Claude Fable 5.2
     codex -m anthropic/claude-fable-5-2
   Claude Opus 5.5

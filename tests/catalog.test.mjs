@@ -115,11 +115,12 @@ test('Claude Fable 5.2 has its own entry, effort levels, and default', () => {
   assert.match(fable.description, /30-day data retention, not under zero data retention/);
 });
 
-test('GPT-6.1 Sol on OpenRouter keeps its own name beside the native model', () => {
+test('GPT-6.2 Sol on OpenRouter keeps its own name beside the native model', () => {
   const sol = readEntry('openai/gpt-sol-openrouter.json');
-  assert.equal(sol.slug, 'openrouter/openai/gpt-6.1-sol');
-  assert.equal(sol.display_name, 'GPT-6.1 Sol (OpenRouter)');
+  assert.equal(sol.slug, 'openrouter/openai/gpt-6.2-sol');
+  assert.equal(sol.display_name, 'GPT-6.2 Sol (OpenRouter)');
   assert.equal(sol.visibility, 'list');
+  // Not the native default: OpenRouter bills a prompt of 272,000 tokens or more at twice the rate.
   assert.equal(sol.context_window, 272000);
   assert.equal(sol.max_context_window, 1050000);
   // OpenRouter rejects `ultra`, which the native model offers.
@@ -264,7 +265,7 @@ test('verify-catalog checks router entries against the repository and reports wh
   assert.equal(verify(catalogFile).status, 0, verify(catalogFile).stderr);
   const shown = verify('--report', catalogFile);
   assert.equal(shown.stdout, 'Router models: anthropic/claude-fable-5-2, anthropic/claude-opus-5-5, anthropic/claude-sonnet-5-5, '
-    + `${deepseek.slug}, ${ultraSpark.slug}, ${ultraSparkPrivate.slug}, ${muse.slug}, ${museStandard.slug}, openrouter/openai/gpt-6.1-sol\n`
+    + `${deepseek.slug}, ${ultraSpark.slug}, ${ultraSparkPrivate.slug}, ${muse.slug}, ${museStandard.slug}, openrouter/openai/gpt-6.2-sol\n`
     + 'Router models usable by name: openrouter/anthropic/claude-opus-5.5, openrouter/anthropic/claude-sonnet-5.5\n'
     + 'Native OpenAI models: 1 in /model (require a ChatGPT plan)\n');
   assert.equal(build('hide').status, 0);

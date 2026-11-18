@@ -145,7 +145,7 @@ test('installs with a key file, and fails without a key when it cannot prompt', 
     for (const slug of ['ultra-spark-private/deepseek-v4.1-flash-1017', 'ultra-spark/deepseek-v4.1-flash-1017',
       'openrouter/meta/muse-spark-1.3',
       'openrouter/meta/muse-spark-1.3-contributor',
-      'openrouter/openai/gpt-6.1-sol',
+      'openrouter/openai/gpt-6.2-sol',
       'anthropic/claude-fable-5-2', 'anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5']) {
       assert.match(summary, new RegExp(`^ {4}codex -m ${slug.replaceAll('.', '\\.')}\\r?$`, 'm'));
     }

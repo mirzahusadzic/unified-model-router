@@ -30,7 +30,7 @@ version = 1
 #   model identity, OpenRouter routing, capabilities, context limits,
 #   reasoning settings, and main and persistent instructions maintained in
 #   prompts/.
-# - openai/gpt-sol-openrouter.json, derived from the DeepSeek entry: GPT-6.1
+# - openai/gpt-sol-openrouter.json, derived from the DeepSeek entry: GPT-6.2
 #   Sol model identity, OpenRouter-only routing, capabilities, context limits,
 #   reasoning settings, and main and persistent instructions maintained in
 #   prompts/.

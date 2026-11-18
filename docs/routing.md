@@ -22,7 +22,7 @@ The same catalog serves main threads, spawned agents, and any interface that exp
 | `ultra-spark/deepseek-v4.1-flash-1017` | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` |
 | `openrouter/meta/muse-spark-1.3` | OpenRouter | `meta/muse-spark-1.3` |
 | `openrouter/meta/muse-spark-1.3-contributor` | OpenRouter | `meta/muse-spark-1.3-contributor` |
-| `openrouter/openai/gpt-6.1-sol` | OpenRouter | `openai/gpt-6.1-sol` |
+| `openrouter/openai/gpt-6.2-sol` | OpenRouter | `openai/gpt-6.2-sol` |
 | `anthropic/claude-fable-5-2` | Anthropic's API, or OpenRouter | `claude-fable-5-2`, or `anthropic/claude-fable-5.2` |
 | `anthropic/claude-opus-5-5` | Anthropic's API, or OpenRouter | `claude-opus-5-5`, or `anthropic/claude-opus-5.5` |
 | `anthropic/claude-sonnet-5-5` | Anthropic's API, or OpenRouter | `claude-sonnet-5-5`, or `anthropic/claude-sonnet-5.5` |

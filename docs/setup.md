@@ -321,7 +321,7 @@ codex --profile unified-openrouter \
 | **DeepSeek V4.1 Flash 1017 · Ultra Spark Contributor** | `ultra-spark/deepseek-v4.1-flash-1017` | 960,000 tokens | Delegates to Muse Contributor workers; see [Ultra Spark Contributor](#ultra-spark-contributor) |
 | **Muse Spark 1.3** | `openrouter/meta/muse-spark-1.3` | 1,048,576 tokens | Its endpoint does not train on its inputs; see [Muse Spark 1.3](#muse-spark-13) |
 | **Muse Spark 1.3 Contributor** | `openrouter/meta/muse-spark-1.3-contributor` | 1,048,576 tokens | Meta trains on its inputs; see [Muse Spark 1.3 Contributor](#muse-spark-13-contributor) |
-| **GPT-6.1 Sol (OpenRouter)** | `openrouter/openai/gpt-6.1-sol` | 272,000 tokens | Billed to OpenRouter credit, beside the native model; see [GPT-6.1 Sol](#gpt-61-sol) |
+| **GPT-6.2 Sol (OpenRouter)** | `openrouter/openai/gpt-6.2-sol` | 272,000 tokens | Billed to OpenRouter credit, beside the native model; see [GPT-6.2 Sol](#gpt-62-sol) |
 | **Claude Fable 5.2** | `anthropic/claude-fable-5-2` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet; see [Claude Fable 5.2](#claude-fable-52) |
 | **Claude Opus 5.5** | `anthropic/claude-opus-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet |
 | **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Fable 5.2, Opus 5.5 and Sonnet 5.5](#claude-fable-52-opus-55-and-sonnet-55) |
@@ -371,12 +371,12 @@ codex -m openrouter/meta/muse-spark-1.3-contributor
 
 OpenRouter routes to it only after you allow endpoints that may train on inputs in your OpenRouter privacy settings.
 
-#### GPT-6.1 Sol
+#### GPT-6.2 Sol
 
-[`catalog/openai/gpt-sol-openrouter.json`](../catalog/openai/gpt-sol-openrouter.json) adds `openrouter/openai/gpt-6.1-sol`, separate from the native `gpt-6.1-sol`: the prefix sends it to OpenRouter, on OpenRouter credit, and the native name keeps going to the Codex backend. Its context starts at the native default of 272,000 tokens, up to OpenRouter's 1,050,000; the entry offers `low` through `max` (default `low`), since OpenRouter rejects `ultra`, and declares no parallel tool calls.
+[`catalog/openai/gpt-sol-openrouter.json`](../catalog/openai/gpt-sol-openrouter.json) adds `openrouter/openai/gpt-6.2-sol`, separate from the native `gpt-6.2-sol`: the prefix sends it to OpenRouter, on OpenRouter credit, and the native name keeps going to the Codex backend. Its context starts at 272,000 tokens, where OpenRouter starts billing a prompt at twice the rate, up to OpenRouter's 1,050,000; the entry offers `low` through `max` (default `low`), since OpenRouter rejects `ultra`, and declares no parallel tool calls.
 
 ```sh
-codex -m openrouter/openai/gpt-6.1-sol
+codex -m openrouter/openai/gpt-6.2-sol
 ```
 
 A session that uses it counts as an OpenAI session: it stays off the training tier and its OpenRouter requests carry `provider.data_collection: "deny"`. An OpenRouter guardrail that blocks the model or OpenAI ends each request in a router diagnostic until you allow them.
