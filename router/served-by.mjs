@@ -115,12 +115,13 @@ function finalEvent(block) {
 // `response.provider`: the route's own name (Anthropic, OpenAI), or `unknown` on
 // OpenRouter, whose generation is remembered for a later lookup; and
 // `response.route`, the upstream the request went to (`anthropic`, `openrouter`,
-// `openai`). A request
+// `openai`). On Anthropic's API, `response.thinking` says how Claude was asked
+// to think: `adaptive`, `off`, or `budget`. A request
 // pinned to exactly one endpoint also gets `response.endpoint`, that tag, when
 // an upstream produced the final event. `source`, filled in by the search
 // step, names the generation behind the final event and whether an upstream
 // produced it rather than the router.
-export function servedByStream({ provider = null, route = null, endpoint = null, source = {} } = {}) {
+export function servedByStream({ provider = null, route = null, endpoint = null, thinking = null, source = {} } = {}) {
   const decoder = new StringDecoder('utf8');
   const buffered = { pending: '' };
   const pass = (stream, text) => {
@@ -133,6 +134,7 @@ export function servedByStream({ provider = null, route = null, endpoint = null,
       // A final event the router wrote, such as after a refused search step, names no provider.
       event.response.provider = source.upstreamFinal === false ? 'unknown' : provider ?? 'unknown';
       if (route) event.response.route = route;
+      if (thinking) event.response.thinking = thinking;
       if (endpoint && source.upstreamFinal !== false) event.response.endpoint = endpoint;
       if (!provider && source.upstreamFinal !== false) rememberGeneration(event.response.id, source.generationId ?? event.response.id);
       // Only the data changes; the event's other lines keep their place.

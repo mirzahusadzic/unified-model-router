@@ -1,7 +1,7 @@
 // Shaping a request for its upstream, and the bounded retry after a rejected
 // step.
 import { createHash } from 'node:crypto';
-import { claudeEffort, hasSystemPrompt, isAnthropicThinking } from './anthropic.mjs';
+import { claudeEffort, hasSystemPrompt, isAnthropicThinking, turnsThinkingOff } from './anthropic.mjs';
 import { openrouterApiKey, providerOrders } from './config.mjs';
 import { claudeEffortChanges } from './sessions.mjs';
 import { overrideWebSearchForOpenRouter } from './web-search.mjs';
@@ -80,10 +80,16 @@ function addEffortUpdates(request, provider, upstreamModel, thread, { thinkingBu
   }
   // On Anthropic's API, the effort Claude runs: `none` and `minimal` are its `low`,
   // so moving between them is no change, and an effort Claude lacks keeps today's request.
-  const effort = provider === 'anthropic' ? claudeEffort(request.reasoning?.effort) : request.reasoning?.effort;
+  // A model whose `none` turns thinking off keeps `none` apart.
+  const requested = request.reasoning?.effort;
+  const effort = provider !== 'anthropic' ? requested
+    : turnsThinkingOff(upstreamModel, requested) ? requested : claudeEffort(requested);
   const efforts = claudeEffortChanges(thread, fingerprints, effort);
   // A single triple is the request's own effort, so it goes out as sent.
   if (!efforts || efforts.length < 2) return 0;
+  // Thinking off takes no per-message effort, so a thread that ran with it
+  // since its history last matched sets each effort at the top level.
+  if (provider === 'anthropic' && efforts.some(([, value]) => turnsThinkingOff(upstreamModel, value))) return 0;
   const changes = new Map(efforts.slice(1).map(([count, value]) => [count, value]));
   const input = [];
   let count = 0;

@@ -4,7 +4,7 @@ import { pipeline } from 'node:stream';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { anthropicMaxTokens, anthropicMaxTokensLimit, anthropicRefusal, messagesMaxTokens } from './anthropic.mjs';
+import { anthropicMaxTokens, anthropicMaxTokensLimit, anthropicRefusal, messagesMaxTokens, thinkingOffModels } from './anthropic.mjs';
 import { isObject, routerRevision as sourceRevision } from './common.mjs';
 import { anthropicApiKey, envFile, host, logEvent, modelCatalogFile, openrouterApiKey, port, rejectedRequestDir, routerToken } from './config.mjs';
 import { claudeRoute, holdAnthropicRoute, protectedSession, recordClaudeRoute, sessionRefusal, sessionSide, trainingDeclaration, trainingDeclarations } from './sessions.mjs';
@@ -272,6 +272,8 @@ const server = http.createServer((request, response) => {
         endpointPins: true,
         fallbackPolicies,
         thinkingBudgets: true,
+        // The slugs whose effort `none` turns Claude's thinking off on Anthropic's API.
+        thinkingOff: { effort: 'none', models: [...thinkingOffModels].map(id => `anthropic/${id}`) },
         // Each GET /v1/models entry's `training`; see trainingDeclaration.
         trainingDeclarations,
         modelTraining: 'training-v1',
@@ -656,7 +658,7 @@ const server = http.createServer((request, response) => {
       try {
         upstream = openUpstream({
           target, headers, body: requestBody, onError: upstreamError, log: anthropicLog, promptCache, thinkingBudget,
-        }, upstreamResponse => {
+        }, (upstreamResponse, translation = {}) => {
           if (response.destroyed) {
             upstreamResponse.destroy();
             return;
@@ -862,6 +864,7 @@ const server = http.createServer((request, response) => {
             streams.splice(streams.length - 1, 0, servedByStream({
               provider: { anthropic: 'Anthropic', openai: 'OpenAI' }[target.provider] ?? null,
               route: target.provider,
+              thinking: translation.thinking ?? null,
               // One pinned endpoint with no fallbacks is the one that served.
               endpoint: target.provider === 'openrouter' && endpoints?.length === 1 ? endpoints[0] : null,
               source: servedSource,

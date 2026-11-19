@@ -124,7 +124,8 @@ export function openUpstream({
     sent = Buffer.from(JSON.stringify(translated.body));
     headers = { ...headers, 'content-length': String(sent.length),
       ...(translated.betas.length > 0 ? { 'anthropic-beta': [headers['anthropic-beta'], ...translated.betas].join(',') } : {}) };
-    respond = upstreamResponse => onResponse(anthropicResponse(upstreamResponse, translated.declared, log));
+    respond = upstreamResponse => onResponse(anthropicResponse(upstreamResponse, translated.declared, log),
+      { thinking: translated.thinking });
   }
   const upstream = target.protocol.request({
     hostname: target.hostname,

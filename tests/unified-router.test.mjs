@@ -2560,6 +2560,66 @@ test('a Claude request without an effort change goes out as before the effort up
   assert.ok(!worker.body.messages.some(message => message.role === 'system'));
 });
 
+test('effort none turns Claude Sonnet 5.5\'s thinking off on Anthropic\'s API, and leaves other models and efforts thinking', async () => {
+  const sonnet = 'anthropic/claude-sonnet-5-5';
+  const off = await send(effortRequest(sonnet, 'none', [userText('Label it.')]));
+  assert.equal(off.hostname, 'api.anthropic.com');
+  // The setting takes no other thinking field, and an effort of high or below.
+  assert.deepEqual(off.body.thinking, { type: 'between_tools' });
+  assert.deepEqual(off.body.output_config, { effort: 'low' });
+  const adaptive = { type: 'adaptive', display: 'summarized', block_binding: { prefix_mismatch_behavior: 'drop_block' } };
+  // `minimal` stays Claude's low with thinking on, and so does `none` on every other Claude model.
+  for (const [slug, effort] of [[sonnet, 'minimal'], [sonnet, 'low'], ['anthropic/claude-opus-5-5', 'none'],
+    ['anthropic/claude-fable-5-2', 'none'], ['anthropic/claude-haiku-5-5', 'none']]) {
+    const sent = await send(effortRequest(slug, effort, [userText('Label it.')]));
+    assert.deepEqual(sent.body.thinking, adaptive, `${slug} ${effort}`);
+    assert.deepEqual(sent.body.output_config, { effort: 'low' }, `${slug} ${effort}`);
+  }
+  // A caller's thinking budget wins over `none`.
+  const budgeted = await send(effortRequest(sonnet, 'none', [userText('Label it.')]), { 'x-codex-router-thinking-budget': '2048' });
+  assert.deepEqual(budgeted.body.thinking, { type: 'enabled', budget_tokens: 2048 });
+  assert.equal(Object.hasOwn(budgeted.body, 'output_config'), false);
+  // OpenRouter's copy keeps the effort as sent.
+  const openrouter = await send(effortRequest('openrouter/anthropic/claude-sonnet-5.5', 'none', [userText('Label it.')]));
+  assert.equal(openrouter.hostname, 'openrouter.ai');
+  assert.deepEqual(openrouter.body.reasoning, { effort: 'none', summary: 'auto' });
+  const health = await exchange('', {}, { method: 'GET', url: '/health' });
+  assert.deepEqual(health.body.capabilities.thinkingOff, { effort: 'none', models: [sonnet] });
+});
+
+test('a Sonnet 5.5 thread that moves to or from thinking off sets each effort at the top level', async () => {
+  const model = 'anthropic/claude-sonnet-5-5';
+  const turns = [userText('Plan.'), assistantText('Planned.'), userText('Go on.'), assistantText('Gone on.'), userText('Finish.')];
+  const systemMessages = sent => sent.body.messages.filter(message => message.role === 'system').length;
+  const thread = inClaudeSession('thinking-off-mid-thread');
+  await send(effortRequest(model, 'medium', turns.slice(0, 1)), thread);
+  // Per-message effort is a 400 with thinking off, so the move goes in at the top level.
+  const quiet = await send(effortRequest(model, 'none', turns.slice(0, 3)), thread);
+  assert.deepEqual(quiet.body.thinking, { type: 'between_tools' });
+  assert.deepEqual(quiet.body.output_config, { effort: 'low' });
+  assert.equal(systemMessages(quiet), 0);
+  assert.equal(quiet.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01');
+  assert.equal(parsedLogEntries().findLast(entry => entry.event === 'request.forwarded').effortUpdates, 0);
+  // Back to thinking: the new effort sets the top level, with no update for the earlier change.
+  const back = await send(effortRequest(model, 'high', turns), thread);
+  assert.equal(back.body.thinking.type, 'adaptive');
+  assert.deepEqual(back.body.output_config, { effort: 'high' });
+  assert.equal(systemMessages(back), 0);
+  // `low` and `none` run differently on this model, so moving between them is a change.
+  const lowFirst = inClaudeSession('thinking-off-from-low');
+  await send(effortRequest(model, 'low', turns.slice(0, 1)), lowFirst);
+  const fromLow = await send(effortRequest(model, 'none', turns.slice(0, 3)), lowFirst);
+  assert.deepEqual(fromLow.body.thinking, { type: 'between_tools' });
+  assert.equal(systemMessages(fromLow), 0);
+  // A thread that starts with thinking off changes at the top level too.
+  const offFirst = inClaudeSession('thinking-off-first');
+  await send(effortRequest(model, 'none', turns.slice(0, 1)), offFirst);
+  const raised = await send(effortRequest(model, 'medium', turns.slice(0, 3)), offFirst);
+  assert.equal(raised.body.thinking.type, 'adaptive');
+  assert.deepEqual(raised.body.output_config, { effort: 'medium' });
+  assert.equal(systemMessages(raised), 0);
+});
+
 test('Codex changes Claude\'s effort mid-thread on OpenRouter with a configuration_update item', async () => {
   const turns = [userText('Plan.'), assistantText('Planned.'), userText('Go on.')];
   const thread = inClaudeSession('effort-openrouter');
@@ -2882,6 +2942,24 @@ test('Claude\'s thinking tokens reach the caller as reasoning_tokens, and the re
     { 'x-codex-router-report': 'provider' })).rawBody).at(-1);
   assert.equal(native.response.provider, 'OpenAI');
   assert.equal(native.response.route, 'openai');
+});
+
+test('the served-by report says how Claude was asked to think on Anthropic\'s API', async t => {
+  const answer = () => ({ status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
+    deltas: [{ type: 'text_delta', text: 'OK' }] }]) });
+  mockUpstreamSequence(t, [answer(), answer(), answer(),
+    { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-thinking') }]);
+  const reported = async (slug, effort, headers = {}) => sseEventsOf((await exchangeRaw(JSON.stringify(effortRequest(slug, effort,
+    [userText('Label it.')])), { 'x-codex-router-report': 'provider', ...headers })).rawBody).at(-1).response;
+  const off = await reported('anthropic/claude-sonnet-5-5', 'none');
+  assert.equal(off.route, 'anthropic');
+  assert.equal(off.thinking, 'off');
+  assert.equal((await reported('anthropic/claude-sonnet-5-5', 'minimal')).thinking, 'adaptive');
+  assert.equal((await reported('anthropic/claude-sonnet-4-6', 'none', { 'x-codex-router-thinking-budget': '2048' })).thinking, 'budget');
+  // OpenRouter decides how its copy thinks, so the report says nothing about it.
+  const openrouter = await reported('openrouter/anthropic/claude-sonnet-5.5', 'none');
+  assert.equal(openrouter.route, 'openrouter');
+  assert.equal(Object.hasOwn(openrouter, 'thinking'), false);
 });
 
 test('a reported search follows the answer\'s generation, pins its search, and names no endpoint on a router answer', async t => {

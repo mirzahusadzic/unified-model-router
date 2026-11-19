@@ -392,7 +392,7 @@ codex -m anthropic/claude-opus-5-5
 codex -m anthropic/claude-sonnet-5-5
 ```
 
-- **Reasoning effort:** `codex -m` keeps your configured effort, `xhigh` from the installer; to spend less, pick a lower one with `/model` or `-c model_reasoning_effort=medium`. On Anthropic's API, `none` and `minimal` become `low`.
+- **Reasoning effort:** `codex -m` keeps your configured effort, `xhigh` from the installer; to spend less, pick a lower one with `/model` or `-c model_reasoning_effort=medium`. On Anthropic's API, `none` and `minimal` become `low`, except that `none` turns thinking off on Claude Sonnet 5.5.
 - **API key only:** use an Anthropic API key from [platform.claude.com](https://platform.claude.com/); it bills its organization's API credits. Anthropic does not allow Claude sign-in tokens (`sk-ant-oat…`) in other tools, so the router ignores one and logs `anthropic.sign_in_token_ignored`, and the verifier fails.
 - **Older threads:** `openrouter/anthropic/claude-sonnet-5.5` and `openrouter/anthropic/claude-opus-5.5` are hidden from `/model` but still work by name, for threads that started on them.
 - **Isolation:** Claude never shares a session with Muse Spark 1.3 Contributor, Ultra Spark Contributor, or other training-tier models, on either route.

@@ -35,6 +35,11 @@ const anthropicThinkingPrefix = 'codex-router-anthropic-thinking:v1:';
 const claudeEfforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 // Claude has no `none` or `minimal`; they become `low`.
 export const claudeEffort = effort => (claudeEfforts.has(effort) ? effort : ['none', 'minimal'].includes(effort) ? 'low' : null);
+// The Claude models whose `none` turns thinking off, with thinking
+// `between_tools`. Anthropic's API takes it only from them, at effort `high`
+// or below, with no other thinking field and no per-message effort.
+export const thinkingOffModels = new Set(['claude-sonnet-5-5']);
+export const turnsThinkingOff = (model, effort) => effort === 'none' && thinkingOffModels.has(model);
 
 export function isAnthropicThinking(item) {
   return item?.type === 'reasoning' && typeof item.encrypted_content === 'string'
@@ -284,13 +289,16 @@ export function messagesMaxTokens(request) {
 // prompts share it; "none" sets no breakpoint. thinkingBudget is the caller's
 // X-Codex-Router-Thinking-Budget: thinking on every response, up to that many
 // tokens, in place of adaptive thinking and effort, for the models that still
-// accept it. Codex sends neither.
+// accept it. Codex sends neither. `none` on a thinkingOffModels model turns
+// thinking off, at effort `low`; Codex's catalog offers no `none` for them.
 export function messagesRequest(request, { promptCache = null, thinkingBudget = null } = {}) {
   const { declared, definitions } = claudeTools(request.tools);
   const { system, messages } = claudeMessages(request);
   if (promptCache === 'instructions' && system.length > 0) {
     system[system.length - 1] = { ...system.at(-1), cache_control: { type: 'ephemeral' } };
   }
+  // How Claude thinks: within the caller's budget, not at all, or adaptively.
+  const thinking = thinkingBudget ? 'budget' : turnsThinkingOff(request.model, request.reasoning?.effort) ? 'off' : 'adaptive';
   const effort = thinkingBudget ? null : claudeEffort(request.reasoning?.effort);
   const outputConfig = {
     ...(effort ? { effort } : {}),
@@ -299,6 +307,7 @@ export function messagesRequest(request, { promptCache = null, thinkingBudget = 
   };
   return {
     declared,
+    thinking,
     betas: messages.some(message => message.output_config) ? [effortUpdateBeta] : [],
     body: {
       model: request.model,
@@ -312,7 +321,8 @@ export function messagesRequest(request, { promptCache = null, thinkingBudget = 
         tool_choice: request.tool_choice === 'none' ? { type: 'none' }
           : { type: 'auto', ...(request.parallel_tool_calls === false ? { disable_parallel_tool_use: true } : {}) },
       } : {}),
-      thinking: thinkingBudget ? { type: 'enabled', budget_tokens: thinkingBudget } : {
+      thinking: thinking === 'budget' ? { type: 'enabled', budget_tokens: thinkingBudget }
+        : thinking === 'off' ? { type: 'between_tools' } : {
         type: 'adaptive',
         display: request.reasoning?.summary === 'none' ? 'omitted' : 'summarized',
         block_binding: { prefix_mismatch_behavior: 'drop_block' },
