@@ -383,7 +383,7 @@ A session that uses it counts as an OpenAI session: it stays off the training ti
 
 #### Claude Fable 5.2, Opus 5.5 and Sonnet 5.5
 
-[`catalog/anthropic/sonnet.json`](../catalog/anthropic/sonnet.json) and [`catalog/anthropic/opus.json`](../catalog/anthropic/opus.json) add `anthropic/claude-sonnet-5-5` and `anthropic/claude-opus-5-5` with a **1,000,000-token** context and a 95% effective budget. Thinking cannot be turned off, so the entries offer `low` through `max` (default `medium`) and no `none`.
+[`catalog/anthropic/sonnet.json`](../catalog/anthropic/sonnet.json) and [`catalog/anthropic/opus.json`](../catalog/anthropic/opus.json) add `anthropic/claude-sonnet-5-5` and `anthropic/claude-opus-5-5` with a **1,000,000-token** context and a 95% effective budget. The entries offer `low` through `max` (default `medium`) and no `none`, so Codex always leaves Claude's thinking on; other callers can turn it off on Sonnet 5.5 with `none` on Anthropic's API.
 
 With `ANTHROPIC_API_KEY` in the [router settings](#router-settings), Claude runs on Anthropic's API; without it, Claude runs on OpenRouter's copy of the same model. Both routes charge the same per-token prices, but credits from a Claude plan work only on Anthropic's API, and only there does Claude's signed thinking carry from step to step. A thread keeps the route it started on, and moves to OpenRouter if Anthropic refuses the key, the credits, a spend limit, or the model; see [Claude's two routes](routing.md#claudes-two-routes).
 

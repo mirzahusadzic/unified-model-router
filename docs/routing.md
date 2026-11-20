@@ -30,7 +30,7 @@ The same catalog serves main threads, spawned agents, and any interface that exp
 
 On the way, the router adapts each request to its upstream:
 
-- **Reasoning effort:** DeepSeek accepts only `low`, `high`, `max`, and `none`, so `minimal` becomes `low`, `medium` becomes `high`, and `xhigh` or `ultra` becomes `max`. Other OpenRouter requests keep it, and OpenRouter translates it for each provider; native OpenAI requests keep it too, and on Anthropic's API, `none` and `minimal` become `low`.
+- **Reasoning effort:** DeepSeek accepts only `low`, `high`, `max`, and `none`, so `minimal` becomes `low`, `medium` becomes `high`, and `xhigh` or `ultra` becomes `max`. Other OpenRouter requests keep it, and OpenRouter translates it for each provider; native OpenAI requests keep it too, and on Anthropic's API, `none` and `minimal` become `low`, except that `none` turns thinking off on Claude Sonnet 5.5.
 - **Reasoning in history:** Messages, tool calls, and tool results always pass. OpenAI gets encrypted reasoning but not OpenRouter's plaintext reasoning; Claude's signed thinking goes only to Anthropic's API, which gets no other provider's reasoning.
 - **Native tool declarations:** Left out of OpenRouter requests, which reject them: Codex 0.164 records `additional_tools` items in history for Responses Lite models such as GPT-6, and the request's `tools` field already lists the model's tools.
 - **Untrusted context:** Codex 0.170 sends context it does not trust, such as a thread goal's objective, as a named tool output without a call ID, which only OpenAI's API reads. OpenRouter and Claude get the user message Codex sends without that form, `<external_goal_objective>…</external_goal_objective>`; native OpenAI requests keep it.
