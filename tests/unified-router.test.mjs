@@ -2843,6 +2843,30 @@ test('web search on Claude\'s direct route runs through OpenRouter and continues
   assert.match(continuation.body.messages[2].content[0].content, /688 contributors/);
 });
 
+test('thinking off holds across a router search: both Anthropic steps turn it off, and the report says so', async t => {
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'tool_use', id: 'toolu_quiet', name: 'web_search', input: {} },
+      deltas: [{ type: 'input_json_delta', partial_json: '{"query":"openai codex contributors"}' }] }], { stopReason: 'tool_use' }) },
+    webSearchResult(200),
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
+      deltas: [{ type: 'text_delta', text: 'GitHub lists 688 contributors.' }] }]) },
+  ]);
+  const result = await exchangeRaw(claudeRequest('How many contributors?', { tools: [{ type: 'web_search' }], reasoning: { effort: 'none' } }),
+    { ...inClaudeSession('quiet-search'), 'x-codex-router-report': 'provider' });
+  const final = parseSse(result.rawBody).at(-1);
+  assert.equal(final.type, 'response.completed');
+  assert.equal(final.response.route, 'anthropic');
+  assert.equal(final.response.thinking, 'off');
+  const [first, search, continuation] = forwarded.slice(-3);
+  assert.equal(search.hostname, 'openrouter.ai');
+  for (const step of [first, continuation]) {
+    assert.equal(step.hostname, 'api.anthropic.com');
+    assert.deepEqual(step.body.thinking, { type: 'between_tools' });
+    assert.deepEqual(step.body.output_config, { effort: 'low' });
+    assert.equal(step.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01');
+  }
+});
+
 // OpenRouter ends its streams with `[DONE]` after the final event.
 const finalEventFor = id => `data: {"type":"response.output_text.delta","delta":"OK"}\n\n`
   + `data: {"type":"response.completed","response":{"id":"${id}","status":"completed"}}\n\ndata: [DONE]\n\n`;
@@ -3423,4 +3447,28 @@ test('with X-Codex-Router-Fallback: none, a refusal on the step after a search f
   assert.equal(final.response.route, 'anthropic');
   assert.doesNotMatch(final.response.error.message, /continues on OpenRouter/);
   assert.equal(JSON.parse(readFileSync(join(routerHome, 'claude-routes.json'), 'utf8'))['pinned-continuation'].route, 'anthropic');
+});
+
+test('a refusal that moves a thinking-off request to OpenRouter sends its effort as is, and the report names no thinking', async t => {
+  // The tests before this one held new sessions on OpenRouter for an hour.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 10 * 60 * 60 * 1000 });
+  mockUpstreamSequence(t, [
+    { status: 400, body: JSON.stringify({ type: 'error', error: { type: 'invalid_request_error',
+      message: 'Your credit balance is too low to access the Anthropic API.' } }) },
+    { status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-1793-quiet-fallback') },
+  ]);
+  const result = await exchangeRaw(claudeRequest('Label it.', { reasoning: { effort: 'none' } }),
+    { ...inClaudeSession('quiet-fallback'), 'x-codex-router-report': 'provider' });
+  const final = sseEventsOf(result.rawBody).at(-1);
+  assert.equal(final.type, 'response.completed');
+  const [refused, fallback] = forwarded.slice(-2);
+  assert.equal(refused.hostname, 'api.anthropic.com');
+  assert.deepEqual(refused.body.thinking, { type: 'between_tools' });
+  // OpenRouter gets the Responses request with the caller's effort, and decides how its copy thinks.
+  assert.equal(fallback.hostname, 'openrouter.ai');
+  assert.equal(fallback.body.model, 'anthropic/claude-sonnet-5.5');
+  assert.deepEqual(fallback.body.reasoning, { effort: 'none' });
+  assert.equal(Object.hasOwn(fallback.body, 'thinking'), false);
+  assert.equal(final.response.route, 'openrouter');
+  assert.equal(Object.hasOwn(final.response, 'thinking'), false);
 });
