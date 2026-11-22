@@ -115,13 +115,13 @@ function storedWebSearchResults(scope, callId) {
 
 // Kept in memory; the step saves once per round of searches, so a round's
 // writes do not grow with its calls. Says whether it kept the result.
-function storeWebSearchResults(scope, callId, text, continued) {
+function storeWebSearchResults(scope, callId, text, continued, round) {
   if (!scope) return false;
   const now = Date.now();
   pruneWebSearchResults();
   const key = webSearchKey(scope, callId);
   webSearchResults.delete(key);
-  webSearchResults.set(key, { at: now, text, continued: Boolean(continued) });
+  webSearchResults.set(key, { at: now, text, continued: Boolean(continued), round });
   while (webSearchResults.size > maxStoredWebSearches) webSearchResults.delete(webSearchResults.keys().next().value);
   return true;
 }
@@ -150,17 +150,31 @@ export function overrideWebSearchForOpenRouter(request, scope) {
     // A step's calls stay together, so the provider sees one assistant turn
     // with its reasoning: each search becomes a call in place, and its output
     // follows the step's last call, beside the outputs Codex returns. A step
-    // of searches alone was continued with their results, so whatever follows
-    // it belongs to the next step. A step that also made other calls ends at
-    // its last call, across the reasoning and text between them; only results
-    // stored as such (`continued: false`) are kept back that way.
+    // of searches alone was continued with their results, round by round: a
+    // round's outputs follow its last search, across the reasoning and text
+    // between its calls, and whatever belongs to a later round follows them.
+    // Each result records its round; one stored without it ends its round at
+    // the next item that is not a search. A step that also made other calls
+    // ends at its last call, across the reasoning and text between them; only
+    // results stored as such (`continued: false`) are kept back that way.
+    const lookups = new Map();
+    for (const [index, item] of request.input.entries()) {
+      if (item?.type !== 'web_search_call') continue;
+      restored += 1;
+      const callId = typeof item.id === 'string' && item.id ? item.id : `ws_restored_${restored}`;
+      const stored = storedWebSearchResults(scope, callId);
+      if (stored?.renewed) renewed = true;
+      lookups.set(index, { callId, stored });
+    }
     const input = [];
     let outputs = [];
     let heldAcrossStep = true;
+    let heldRound = null;
     const flush = () => {
       input.push(...outputs);
       outputs = [];
       heldAcrossStep = true;
+      heldRound = null;
     };
     const stepItem = item => item?.type === 'reasoning' || (item?.role === 'assistant' && (item.type == null || item.type === 'message'));
     const callFollows = index => {
@@ -168,20 +182,35 @@ export function overrideWebSearchForOpenRouter(request, scope) {
       while (ahead < request.input.length && stepItem(request.input[ahead])) ahead += 1;
       return callItemTypes.has(request.input[ahead]?.type) || request.input[ahead]?.type === 'web_search_call';
     };
+    // Whether the next search, past reasoning and text, belongs to the round whose outputs wait.
+    const roundContinues = index => {
+      let ahead = index;
+      while (ahead < request.input.length && stepItem(request.input[ahead])) ahead += 1;
+      return request.input[ahead]?.type === 'web_search_call' && lookups.get(ahead).stored?.round === heldRound;
+    };
     for (const [index, item] of request.input.entries()) {
       if (item?.type === 'web_search_call') {
-        restored += 1;
-        const callId = typeof item.id === 'string' && item.id ? item.id : `ws_restored_${restored}`;
+        const { callId, stored } = lookups.get(index);
+        const round = typeof stored?.round === 'string' ? stored.round : null;
+        // A search from a later round follows the earlier round's outputs.
+        if (outputs.length > 0 && heldRound !== null && round !== heldRound) flush();
         const query = typeof item.action?.query === 'string' ? item.action.query : '';
-        const stored = storedWebSearchResults(scope, callId);
         input.push({ type: 'function_call', call_id: callId, name: 'web_search', arguments: JSON.stringify({ query }) });
         outputs.push({ type: 'function_call_output', call_id: callId, output: stored?.text
           ?? 'The results of this search are not available any more. Search again if they matter.' });
-        if (stored?.continued !== false) heldAcrossStep = false;
-        if (stored?.renewed) renewed = true;
+        if (stored?.continued !== false) {
+          heldAcrossStep = false;
+          heldRound = round;
+        }
         continue;
       }
-      if (!callItemTypes.has(item?.type) && !(outputs.length > 0 && heldAcrossStep && stepItem(item) && callFollows(index))) flush();
+      if (callItemTypes.has(item?.type)) {
+        // A continued round made searches alone, so another call starts a later round.
+        if (outputs.length > 0 && !heldAcrossStep) flush();
+      } else if (!(outputs.length > 0 && stepItem(item)
+        && (heldAcrossStep ? callFollows(index) : heldRound !== null && roundContinues(index + 1)))) {
+        flush();
+      }
       input.push(item);
     }
     flush();
@@ -366,6 +395,10 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
   const decoder = new StringDecoder('utf8');
   const firstBuffer = { pending: '', passThrough: false };
   let searches = 0;
+  // Each round of searches in this step is stored as `<step>:<round>`, so a
+  // later request restores the step round by round.
+  const step = randomUUID();
+  let rounds = 0;
   let limitNoticed = false;
   let finished = false;
   let firstResponseId = null;
@@ -492,6 +525,8 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
     const results = [];
     let notRun = 0;
     const continues = !otherCalls;
+    rounds += 1;
+    const roundKey = `${step}:${rounds}`;
     let stored = false;
     try {
       for (const call of calls) {
@@ -514,7 +549,7 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
         } else {
           notRun += 1;
         }
-        if (storeWebSearchResults(scope, callId, text, continues)) stored = true;
+        if (storeWebSearchResults(scope, callId, text, continues, roundKey)) stored = true;
         const done = { ...searchItem, status: 'completed' };
         emit({ type: 'response.output_item.done', item: done });
         searchItems.push(done);

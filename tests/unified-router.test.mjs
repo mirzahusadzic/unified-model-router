@@ -3387,6 +3387,62 @@ test('a restored search keeps its step as the model saw it: continued alone, or 
     'function_call_output:call_exec']);
 });
 
+test('a restored search step keeps its rounds: one after another, text between a round\'s calls, and a later call Codex ran', async t => {
+  const call = (id, query) => ({ type: 'function_call', id: `fc_${id}`, call_id: id, name: 'web_search', arguments: JSON.stringify({ query }), status: 'completed' });
+  const text = (id, words) => ({ type: 'message', id, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: words, annotations: [] }] });
+  const exec = { type: 'function_call', id: 'fc_exec_later', call_id: 'call_exec_later', name: 'exec_command', arguments: '{}', status: 'completed' };
+  const next = { status: 200, body: JSON.stringify({ id: 'resp_next', output: [] }) };
+  mockUpstreamSequence(t, [
+    // Two rounds of one search each, then the answer.
+    searchCallsResponse('resp_round_one', [call('call_r1', 'one')]), webSearchResult(200),
+    searchCallsResponse('resp_round_two', [call('call_r2', 'two')]), webSearchResult(200),
+    { status: 200, contentType: 'text/event-stream', body: continuationResponse }, next,
+    // One round with text between its calls.
+    searchCallsResponse('resp_between', [text('msg_first', 'First.'), call('call_i0', 'a'), text('msg_then', 'Then.'), call('call_i1', 'b')]),
+    webSearchResult(200), webSearchResult(200), { status: 200, contentType: 'text/event-stream', body: continuationResponse }, next,
+    // A round of searches, then a round with a call Codex runs.
+    searchCallsResponse('resp_search_then_call', [call('call_c1', 'c')]), webSearchResult(200), searchCallsResponse('resp_exec', [exec]), next,
+  ]);
+  const user = words => ({ type: 'message', role: 'user', content: [{ type: 'input_text', text: words }] });
+  const order = upstream => upstream.body.input.slice(1).map(item => `${item.type}:${item.call_id ?? item.id ?? item.role}`);
+  const replay = async (session, after = []) => {
+    const headers = { 'session-id': session };
+    const final = parseSse((await exchangeRaw(searchRequest([user('Check.')]), headers)).rawBody).at(-1);
+    return order(await send({ model: 'deepseek/deepseek-v4.1-flash-1017', tools: [{ type: 'web_search' }],
+      input: [user('Check.'), ...final.response.output, ...after] }, headers));
+  };
+  assert.deepEqual(await replay('rounds-in-order', [user('More?')]), ['function_call:call_r1', 'function_call_output:call_r1',
+    'function_call:call_r2', 'function_call_output:call_r2', 'message:msg_answer', 'message:user']);
+  assert.deepEqual(await replay('text-between-calls', [user('More?')]), ['message:msg_first', 'function_call:call_i0', 'message:msg_then',
+    'function_call:call_i1', 'function_call_output:call_i0', 'function_call_output:call_i1', 'message:msg_answer', 'message:user']);
+  assert.deepEqual(await replay('search-then-call', [{ type: 'function_call_output', call_id: 'call_exec_later', output: 'ok' }]), [
+    'function_call:call_c1', 'function_call_output:call_c1', 'function_call:call_exec_later', 'function_call_output:call_exec_later']);
+});
+
+test('on Claude\'s direct route, a restored search step extends the messages of its last round: rounds in order, thinking between calls', async t => {
+  const tool = (id, query) => ({ start: { type: 'tool_use', id, name: 'web_search', input: {} },
+    deltas: [{ type: 'input_json_delta', partial_json: JSON.stringify({ query }) }] });
+  const thinking = { start: { type: 'thinking', thinking: '' },
+    deltas: [{ type: 'thinking_delta', thinking: 'One more source.' }, { type: 'signature_delta', signature: 'sig-between' }] };
+  const stream = (blocks, stopReason) => ({ status: 200, contentType: 'text/event-stream', body: claudeStream(blocks, stopReason ? { stopReason } : {}) });
+  const says = words => stream([{ start: { type: 'text', text: '' }, deltas: [{ type: 'text_delta', text: words }] }]);
+  mockUpstreamSequence(t, [
+    stream([tool('toolu_r1', 'one')], 'tool_use'), webSearchResult(200), stream([tool('toolu_r2', 'two')], 'tool_use'), webSearchResult(200),
+    says('From both.'), says('Welcome.'),
+    stream([tool('toolu_i0', 'a'), thinking, tool('toolu_i1', 'b')], 'tool_use'), webSearchResult(200), webSearchResult(200),
+    says('From both.'), says('Welcome.'),
+  ]);
+  const question = { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Question.' }] };
+  const thanks = { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Thanks.' }] };
+  for (const session of ['claude-rounds-in-order', 'claude-thinking-between']) {
+    const headers = inClaudeSession(session);
+    const final = parseSse((await exchangeRaw(claudeRequest([question], { tools: [{ type: 'web_search' }] }), headers)).rawBody).at(-1);
+    const lastRound = forwarded.at(-1).body.messages;
+    await exchangeRaw(claudeRequest([question, ...final.response.output, thanks], { tools: [{ type: 'web_search' }] }), headers);
+    assert.deepEqual(forwarded.at(-1).body.messages.slice(0, lastRound.length), lastRound, session);
+  }
+});
+
 test('the router\'s search never takes over a caller\'s own tool named web_search', async t => {
   // A caller that declares its own top-level web_search keeps it, declared once.
   const own = { type: 'function', name: 'web_search', description: 'Search the docs.', parameters: { type: 'object' } };
