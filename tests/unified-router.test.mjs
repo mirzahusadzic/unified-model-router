@@ -2110,21 +2110,50 @@ test('a client that disconnects while the continuation is pending cancels it', a
   assert.equal(requests[2].destroyed, true, 'the pending continuation is cancelled');
 });
 
-test('a step runs at most eight searches and ends without a continuation', async t => {
-  const calls = Array.from({ length: 9 }, (_, index) => ({ type: 'function_call', id: `fc_${index}`, call_id: `call_${index}`,
-    name: 'web_search', arguments: JSON.stringify({ query: `query ${index}` }), status: 'completed' }));
-  mockUpstreamSequence(t, [{ status: 200, contentType: 'text/event-stream', body: sse([
-    { type: 'response.created', response: { id: 'resp_many', status: 'in_progress', output: [] } },
-    ...calls.map((call, index) => ({ type: 'response.output_item.done', output_index: index, item: call })),
-    { type: 'response.completed', response: { id: 'resp_many', status: 'completed', output: calls } }]) },
-  ...Array.from({ length: 8 }, () => webSearchResult(200))]);
+const searchCalls = (prefix, count) => Array.from({ length: count }, (_, index) => ({ type: 'function_call', id: `fc_${prefix}${index}`,
+  call_id: `call_${prefix}${index}`, name: 'web_search', arguments: JSON.stringify({ query: `query ${prefix}${index}` }), status: 'completed' }));
+const searchCallsResponse = (id, calls) => ({ status: 200, contentType: 'text/event-stream', body: sse([
+  { type: 'response.created', response: { id, status: 'in_progress', output: [] } },
+  ...calls.map((call, index) => ({ type: 'response.output_item.done', output_index: index, item: call })),
+  { type: 'response.completed', response: { id, status: 'completed', output: calls } }]) });
+
+test('a step runs at most eight searches; a call past them is answered with a notice, and the model answers from its results', async t => {
+  const calls = searchCalls('', 9);
+  mockUpstreamSequence(t, [searchCallsResponse('resp_many', calls), ...Array.from({ length: 8 }, () => webSearchResult(200)),
+    { status: 200, contentType: 'text/event-stream', body: continuationResponse },
+    { status: 200, contentType: 'text/event-stream', body: continuationResponse }]);
   const before = forwarded.length;
   const logsBefore = logEntries.length;
   const final = parseSse((await exchangeRaw(searchRequest(), { 'session-id': 'many-searches' })).rawBody).at(-1);
-  assert.equal(forwarded.length - before, 9, 'the first response and eight searches, no continuation');
-  assert.equal(final.response.output.length, 8);
-  assert.ok(final.response.output.every(item => item.type === 'web_search_call'));
-  assert.ok(parsedLogEntries().slice(logsBefore).some(entry => entry.event === 'web_search.limit_reached' && entry.dropped === 1));
+  const sent = forwarded.slice(before);
+  assert.equal(sent.length, 10, 'the first response, eight searches and one continuation');
+  assert.ok(!sent.slice(1, 9).some(search => JSON.stringify(search.body.input).includes('query 8')), 'the ninth call runs no search');
+  const notice = sent[9].body.input.find(item => item.type === 'function_call_output' && item.call_id === 'call_8').output;
+  assert.match(notice, /^No search ran: this step has used the router's 8 web searches\. Answer from the results above/);
+  // Codex sees every call as a search, then the answer.
+  assert.deepEqual(final.response.output.map(item => item.type), [...Array(9).fill('web_search_call'), 'message']);
+  assert.deepEqual(final.response.output[8], { type: 'web_search_call', id: 'call_8', status: 'completed', action: { type: 'search', query: 'query 8' } });
+  assert.ok(parsedLogEntries().slice(logsBefore).some(entry => entry.event === 'web_search.limit_reached' && entry.notRun === 1));
+  // A later request restores the ninth call with its notice, as the model saw it.
+  const later = await exchangeRaw(searchRequest([...final.response.output, { type: 'message', role: 'user', content: 'thanks' }]),
+    { 'session-id': 'many-searches' });
+  assert.equal(later.status, 200);
+  assert.equal(forwarded.at(-1).body.input.find(item => item.type === 'function_call_output' && item.call_id === 'call_8').output, notice);
+});
+
+test('a step that asks to search again after the limit notice ends with a router diagnostic', async t => {
+  mockUpstreamSequence(t, [searchCallsResponse('resp_eight', searchCalls('', 8)), ...Array.from({ length: 8 }, () => webSearchResult(200)),
+    searchCallsResponse('resp_ninth', searchCalls('ninth', 1)), searchCallsResponse('resp_tenth', searchCalls('tenth', 1))]);
+  const before = forwarded.length;
+  const events = parseSse((await exchangeRaw(searchRequest(), { 'session-id': 'searches-past-notice' })).rawBody);
+  assert.equal(forwarded.length - before, 11, 'the first response, eight searches and two continuations, no third');
+  const final = events.at(-1);
+  assert.equal(final.type, 'response.completed');
+  assert.deepEqual(final.response.output.map(item => item.type), [...Array(9).fill('web_search_call'), 'message']);
+  assert.equal(final.response.output[8].id, 'call_ninth0');
+  assert.match(final.response.output[9].content[0].text, /^\[router diagnostic\] This step used the router's 8 web searches/);
+  // The call the router did not answer never reaches Codex.
+  assert.ok(!events.some(event => JSON.stringify(event).includes('call_tenth0')));
 });
 
 test('stored search results expire while the router runs', async t => {

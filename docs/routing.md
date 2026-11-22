@@ -110,7 +110,7 @@ How a search runs, from the call to later turns:
 
 - **Why the router runs it:** OpenRouter's own search returns results only as citations, which models do not treat as their own results in later turns, and for some models it fails the step.
 - **The call:** Codex's hosted tool becomes a `web_search` function. Each call runs through OpenRouter's web plugin on the selected model with the Exa engine, five results whose excerpts share 10,000 characters, and Codex sees a native `web_search_call` item.
-- **Limit:** At most eight searches per step.
+- **Limit:** At most eight searches per step. A call past them runs no search; its result tells the model to answer from what it found. If the model asks again instead, the step ends with a `[router diagnostic]`.
 - **The answer:** When the model has no other call pending, the router continues the same response with the results; otherwise Codex runs its calls first, and the next request carries the search.
 - **Later turns:** Requests from the same session carry each search back as a function call with its output, so the model sees what it found and an earlier search reads the same each time.
 - **Storage:** `unified-router/web-search-results.json`, up to 1,000 searches, for 30 days after the session last sends them; a request without a session ID gets its results within the response, and none are kept.

@@ -33,6 +33,12 @@ const webSearchResultsFile = join(dirname(envFile), 'web-search-results.json');
 const webSearchRetentionMs = 30 * 24 * 60 * 60 * 1000;
 const maxStoredWebSearches = 1000;
 const maxWebSearchesPerRequest = 8;
+// A call past the bound runs no search and gets this as its result, so the
+// model answers from what it found; asking again ends the step with the diagnostic.
+const searchLimitNotice = `No search ran: this step has used the router's ${maxWebSearchesPerRequest} web searches. `
+  + 'Answer from the results above, and say what they leave unchecked.';
+const searchLimitDiagnostic = `[router diagnostic] This step used the router's ${maxWebSearchesPerRequest} web searches, `
+  + 'and the model asked for more instead of answering. Its searches stay in the thread; say continue to let it answer from them.';
 const webSearchResultCount = 5;
 // A replayed result counts as used, so a thread that keeps replaying a search
 // keeps the same tool result, and with it Claude's cached prefix and signed
@@ -357,6 +363,7 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
   const decoder = new StringDecoder('utf8');
   const firstBuffer = { pending: '', passThrough: false };
   let searches = 0;
+  let limitNoticed = false;
   let finished = false;
   let firstResponseId = null;
   let earlierOutput = [];
@@ -364,6 +371,13 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
   let usage = null;
   let transform;
   const emit = event => transform.push(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  const routerMessage = text => {
+    const message = { type: 'message', id: `msg_router_${randomUUID().replaceAll('-', '')}`, role: 'assistant', status: 'completed',
+      content: [{ type: 'output_text', annotations: [], text }] };
+    emit({ type: 'response.output_item.added', item: message });
+    emit({ type: 'response.output_item.done', item: message });
+    return message;
+  };
 
   const newRound = continuation => ({ continuation, hidden: new Set(), calls: [], otherCalls: false, streamed: [], open: new Map() });
   let round = newRound(false);
@@ -428,11 +442,7 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
       for (const started of unfinished) emit({ type: 'response.output_item.done', item: started });
       round.streamed.push(...unfinished);
       round.open.clear();
-      const message = { type: 'message', id: `msg_router_${randomUUID().replaceAll('-', '')}`, role: 'assistant', status: 'completed',
-        content: [{ type: 'output_text', annotations: [], text }] };
-      emit({ type: 'response.output_item.added', item: message });
-      emit({ type: 'response.output_item.done', item: message });
-      finalize([...round.streamed, message], { upstream: false });
+      finalize([...round.streamed, routerMessage(text)], { upstream: false });
     };
     if (calls.length === 0) {
       // Nothing to merge or rewrite: the final event passes through exactly as sent.
@@ -452,22 +462,24 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
       return;
     }
 
-    const searchItems = [];
-    const results = [];
-    let dropped = 0;
     // Codex runs its own calls and comes back with the searches in its history;
     // a step of searches alone continues here. Each stored result records
     // which, so a later request restores the step as the model saw it.
     const otherCalls = round.otherCalls || upstreamOutput.some(entry => callItemTypes.has(entry?.type) && !isWebSearchCall(entry));
-    const continues = !otherCalls && searches + calls.length <= maxWebSearchesPerRequest;
+    // Told it has used its searches, a model that asks for more with nothing
+    // else pending gets no further round: the step ends with the diagnostic.
+    if (limitNoticed && !otherCalls) {
+      log('error', 'web_search.limit_ended', { dropped: calls.length, limit: maxWebSearchesPerRequest });
+      finalize([...upstreamOutput.filter(entry => !isWebSearchCall(entry)), routerMessage(searchLimitDiagnostic)], { upstream: false });
+      return;
+    }
+    const searchItems = [];
+    const results = [];
+    let notRun = 0;
+    const continues = !otherCalls;
     for (const call of calls) {
       // Nothing more runs once Codex has gone.
       if (closed()) return;
-      // Calls beyond the bound are dropped from the response, and it ends.
-      if (searches >= maxWebSearchesPerRequest) {
-        dropped += 1;
-        continue;
-      }
       let query = '';
       try {
         query = String(JSON.parse(call.arguments || '{}').query ?? '');
@@ -477,21 +489,29 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
       const callId = call.call_id || call.id;
       const searchItem = { type: 'web_search_call', id: callId, status: 'in_progress', action: { type: 'search', query } };
       emit({ type: 'response.output_item.added', item: searchItem });
-      searches += 1;
-      const text = query ? await search(query) : 'The web search had no query.';
-      if (closed()) return;
+      let text = searchLimitNotice;
+      if (searches < maxWebSearchesPerRequest) {
+        searches += 1;
+        text = query ? await search(query) : 'The web search had no query.';
+        if (closed()) return;
+      } else {
+        notRun += 1;
+      }
       storeWebSearchResults(scope, callId, text, continues);
       const done = { ...searchItem, status: 'completed' };
       emit({ type: 'response.output_item.done', item: done });
       searchItems.push(done);
       results.push({ type: 'function_call_output', call_id: callId, output: text });
     }
-    if (dropped > 0) log('error', 'web_search.limit_reached', { dropped, limit: maxWebSearchesPerRequest });
+    if (notRun > 0) {
+      limitNoticed = true;
+      log('error', 'web_search.limit_reached', { notRun, limit: maxWebSearchesPerRequest });
+    }
     const output = upstreamOutput.flatMap(entry => (isWebSearchCall(entry)
       ? searchItems.filter(searchItem => searchItem.id === (entry.call_id || entry.id)) : [entry]));
     // Searches Codex was shown stay in the output even if the final event left them out.
     for (const searchItem of searchItems) if (!output.includes(searchItem)) output.push(searchItem);
-    if (!continues || dropped > 0) {
+    if (!continues) {
       finalize(output);
       return;
     }
