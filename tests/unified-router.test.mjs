@@ -2156,6 +2156,27 @@ test('a step that asks to search again after the limit notice ends with a router
   assert.ok(!events.some(event => JSON.stringify(event).includes('call_tenth0')));
 });
 
+test('a call past the search limit beside another call gets the notice, and a later request restores it with the step', async t => {
+  const exec = { type: 'function_call', id: 'fc_exec', call_id: 'call_exec', name: 'exec_command', arguments: '{}', status: 'completed' };
+  mockUpstreamSequence(t, [searchCallsResponse('resp_mixed_many', [...searchCalls('', 9), exec]),
+    ...Array.from({ length: 8 }, () => webSearchResult(200)), { status: 200, body: JSON.stringify({ id: 'resp_next', output: [] }) }]);
+  const session = { 'session-id': 'mixed-past-limit' };
+  const before = forwarded.length;
+  const final = parseSse((await exchangeRaw(searchRequest(), session)).rawBody).at(-1);
+  // Codex runs its own call and comes back with the searches, so nothing continues.
+  assert.equal(forwarded.length - before, 9, 'the first response and eight searches');
+  assert.deepEqual(final.response.output.map(item => item.type === 'function_call' ? item.name : item.type),
+    [...Array(9).fill('web_search_call'), 'exec_command']);
+  const user = { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Check.' }] };
+  const later = await send({ model: 'deepseek/deepseek-v4.1-flash-1017', tools: [{ type: 'web_search' }],
+    input: [user, ...final.response.output, { type: 'function_call_output', call_id: 'call_exec', output: 'ok' }] }, session);
+  // The step's calls come first, then their outputs, the notice in its place.
+  assert.deepEqual(later.body.input.slice(1).map(item => `${item.type}:${item.call_id}`), [
+    ...Array.from({ length: 9 }, (_, index) => `function_call:call_${index}`), 'function_call:call_exec',
+    ...Array.from({ length: 9 }, (_, index) => `function_call_output:call_${index}`), 'function_call_output:call_exec']);
+  assert.match(later.body.input.find(item => item.type === 'function_call_output' && item.call_id === 'call_8').output, /^No search ran: /);
+});
+
 test('stored search results expire while the router runs', async t => {
   mockUpstreamSequence(t, [
     { status: 200, contentType: 'text/event-stream', body: webSearchFirstResponse() },
@@ -2888,6 +2909,33 @@ test('web search on Claude\'s direct route runs through OpenRouter and continues
   assert.equal(continuation.hostname, 'api.anthropic.com');
   assert.deepEqual(continuation.body.messages.slice(1).map(message => message.content.map(block => block.type)), [['tool_use'], ['tool_result']]);
   assert.match(continuation.body.messages[2].content[0].content, /688 contributors/);
+});
+
+test('on Claude\'s direct route, a call past the search limit gets the notice, and the next turn extends the step unchanged', async t => {
+  const searchBlocks = Array.from({ length: 9 }, (_, index) => ({ start: { type: 'tool_use', id: `toolu_s${index}`, name: 'web_search', input: {} },
+    deltas: [{ type: 'input_json_delta', partial_json: JSON.stringify({ query: `q${index}` }) }] }));
+  const textAnswer = text => ({ status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
+    deltas: [{ type: 'text_delta', text }] }]) });
+  mockUpstreamSequence(t, [{ status: 200, contentType: 'text/event-stream', body: claudeStream(searchBlocks, { stopReason: 'tool_use' }) },
+    ...Array.from({ length: 8 }, () => webSearchResult(200)), textAnswer('From eight searches: 688.'), textAnswer('You are welcome.')]);
+  const session = inClaudeSession('claude-search-limit');
+  const question = { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'How many contributors?' }] };
+  const before = forwarded.length;
+  const final = parseSse((await exchangeRaw(claudeRequest([question], { tools: [{ type: 'web_search' }] }), session)).rawBody).at(-1);
+  const sent = forwarded.slice(before);
+  assert.equal(sent.length, 10, 'the first step, eight searches and one continuation');
+  const continuation = sent[9];
+  assert.equal(continuation.hostname, 'api.anthropic.com');
+  const results = continuation.body.messages[2].content;
+  assert.equal(results.length, 9);
+  assert.match(results.find(block => block.tool_use_id === 'toolu_s8').content, /^No search ran: this step has used the router's 8 web searches/);
+  assert.deepEqual(final.response.output.map(item => item.type), [...Array(9).fill('web_search_call'), 'message']);
+  // The next turn carries the step back as Claude saw it, so its messages extend the continuation's.
+  await exchangeRaw(claudeRequest([question, ...final.response.output,
+    { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Thanks.' }] }], { tools: [{ type: 'web_search' }] }), session);
+  const next = forwarded.at(-1);
+  assert.equal(next.hostname, 'api.anthropic.com');
+  assert.deepEqual(next.body.messages.slice(0, 3), continuation.body.messages.slice(0, 3));
 });
 
 test('thinking off holds across a router search: both Anthropic steps turn it off, and the report says so', async t => {
