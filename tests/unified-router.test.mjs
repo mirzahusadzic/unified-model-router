@@ -2193,6 +2193,23 @@ test('a step that asks to search again after the limit notice ends with a router
   assert.ok(!events.some(event => JSON.stringify(event).includes('call_tenth0')));
 });
 
+test('the limit diagnostic keeps an item the step streamed, even when its final event leaves it out', async t => {
+  const note = { type: 'message', id: 'msg_streamed_note', role: 'assistant', status: 'completed',
+    content: [{ type: 'output_text', text: 'One more source.', annotations: [] }] };
+  const [again] = searchCalls('again', 1);
+  const streamedOnly = { status: 200, contentType: 'text/event-stream', body: sse([
+    { type: 'response.created', response: { id: 'resp_again', status: 'in_progress', output: [] } },
+    { type: 'response.output_item.added', output_index: 0, item: { ...note, status: 'in_progress', content: [] } },
+    { type: 'response.output_item.done', output_index: 0, item: note },
+    { type: 'response.output_item.done', output_index: 1, item: again },
+    { type: 'response.completed', response: { id: 'resp_again', status: 'completed', output: [again] } }]) };
+  mockUpstreamSequence(t, [searchCallsResponse('resp_eight_more', searchCalls('', 8)), ...Array.from({ length: 8 }, () => webSearchResult(200)),
+    searchCallsResponse('resp_ninth_more', searchCalls('ninth', 1)), streamedOnly]);
+  const final = parseSse((await exchangeRaw(searchRequest(), { 'session-id': 'limit-keeps-streamed' })).rawBody).at(-1);
+  assert.deepEqual(final.response.output.slice(-2).map(item => item.id ?? item.type), ['msg_streamed_note', final.response.output.at(-1).id]);
+  assert.match(final.response.output.at(-1).content[0].text, /^\[router diagnostic\] This step used the router's 8 web searches/);
+});
+
 test('a call past the search limit beside another call gets the notice, and a later request restores it with the step', async t => {
   const exec = { type: 'function_call', id: 'fc_exec', call_id: 'call_exec', name: 'exec_command', arguments: '{}', status: 'completed' };
   mockUpstreamSequence(t, [searchCallsResponse('resp_mixed_many', [...searchCalls('', 9), exec]),

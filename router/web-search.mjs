@@ -481,7 +481,11 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
     // else pending gets no further round: the step ends with the diagnostic.
     if (limitNoticed && !otherCalls) {
       log('error', 'web_search.limit_ended', { dropped: calls.length, limit: maxWebSearchesPerRequest });
-      finalize([...upstreamOutput.filter(entry => !isWebSearchCall(entry)), routerMessage(searchLimitDiagnostic)], { upstream: false });
+      // Items Codex was shown stay in the output even if the final event left them out.
+      const kept = upstreamOutput.filter(entry => !isWebSearchCall(entry));
+      const ids = new Set(kept.map(entry => entry?.id).filter(Boolean));
+      const shown = round.streamed.filter(item => item?.id && !ids.has(item.id) && !isWebSearchCall(item));
+      finalize([...kept, ...shown, routerMessage(searchLimitDiagnostic)], { upstream: false });
       return;
     }
     const searchItems = [];
