@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable, Writable } from 'node:stream';
@@ -2152,6 +2153,29 @@ test('a step runs at most eight searches; a call past them is answered with a no
     { 'session-id': 'many-searches' });
   assert.equal(later.status, 200);
   assert.equal(forwarded.at(-1).body.input.find(item => item.type === 'function_call_output' && item.call_id === 'call_8').output, notice);
+});
+
+test('a step saves its search results once per round, not once per search', async t => {
+  mockUpstreamSequence(t, [searchCallsResponse('resp_saves', searchCalls('saves', 8)), ...Array.from({ length: 8 }, () => webSearchResult(200)),
+    { status: 200, contentType: 'text/event-stream', body: continuationResponse }]);
+  // Every save of the results file ends with its rename into place.
+  let saves = 0;
+  const rename = fs.renameSync;
+  fs.renameSync = (from, to) => {
+    if (String(to).endsWith('web-search-results.json')) saves += 1;
+    return rename(from, to);
+  };
+  syncBuiltinESMExports();
+  try {
+    const final = parseSse((await exchangeRaw(searchRequest(), { 'session-id': 'one-save-per-round' })).rawBody).at(-1);
+    assert.equal(final.response.output.length, 9);
+  } finally {
+    fs.renameSync = rename;
+    syncBuiltinESMExports();
+  }
+  assert.equal(saves, 1);
+  const stored = JSON.parse(readFileSync(join(routerHome, 'web-search-results.json'), 'utf8'));
+  assert.equal(Object.keys(stored).filter(key => JSON.parse(key)[0] === 'one-save-per-round').length, 8);
 });
 
 test('a step that asks to search again after the limit notice ends with a router diagnostic', async t => {

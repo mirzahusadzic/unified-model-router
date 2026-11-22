@@ -113,15 +113,17 @@ function storedWebSearchResults(scope, callId) {
   return null;
 }
 
+// Kept in memory; the step saves once per round of searches, so a round's
+// writes do not grow with its calls. Says whether it kept the result.
 function storeWebSearchResults(scope, callId, text, continued) {
-  if (!scope) return;
+  if (!scope) return false;
   const now = Date.now();
   pruneWebSearchResults();
   const key = webSearchKey(scope, callId);
   webSearchResults.delete(key);
   webSearchResults.set(key, { at: now, text, continued: Boolean(continued) });
   while (webSearchResults.size > maxStoredWebSearches) webSearchResults.delete(webSearchResults.keys().next().value);
-  saveWebSearchResults();
+  return true;
 }
 
 const callItemTypes = new Set(['function_call', 'custom_tool_call', 'local_shell_call', 'mcp_call', 'computer_call']);
@@ -486,31 +488,36 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
     const results = [];
     let notRun = 0;
     const continues = !otherCalls;
-    for (const call of calls) {
-      // Nothing more runs once Codex has gone.
-      if (closed()) return;
-      let query = '';
-      try {
-        query = String(JSON.parse(call.arguments || '{}').query ?? '');
-      } catch {
-        // An unreadable call searches for nothing and says so.
-      }
-      const callId = call.call_id || call.id;
-      const searchItem = { type: 'web_search_call', id: callId, status: 'in_progress', action: { type: 'search', query } };
-      emit({ type: 'response.output_item.added', item: searchItem });
-      let text = searchLimitNotice;
-      if (searches < maxWebSearchesPerRequest) {
-        searches += 1;
-        text = query ? await search(query) : 'The web search had no query.';
+    let stored = false;
+    try {
+      for (const call of calls) {
+        // Nothing more runs once Codex has gone.
         if (closed()) return;
-      } else {
-        notRun += 1;
+        let query = '';
+        try {
+          query = String(JSON.parse(call.arguments || '{}').query ?? '');
+        } catch {
+          // An unreadable call searches for nothing and says so.
+        }
+        const callId = call.call_id || call.id;
+        const searchItem = { type: 'web_search_call', id: callId, status: 'in_progress', action: { type: 'search', query } };
+        emit({ type: 'response.output_item.added', item: searchItem });
+        let text = searchLimitNotice;
+        if (searches < maxWebSearchesPerRequest) {
+          searches += 1;
+          text = query ? await search(query) : 'The web search had no query.';
+          if (closed()) return;
+        } else {
+          notRun += 1;
+        }
+        if (storeWebSearchResults(scope, callId, text, continues)) stored = true;
+        const done = { ...searchItem, status: 'completed' };
+        emit({ type: 'response.output_item.done', item: done });
+        searchItems.push(done);
+        results.push({ type: 'function_call_output', call_id: callId, output: text });
       }
-      storeWebSearchResults(scope, callId, text, continues);
-      const done = { ...searchItem, status: 'completed' };
-      emit({ type: 'response.output_item.done', item: done });
-      searchItems.push(done);
-      results.push({ type: 'function_call_output', call_id: callId, output: text });
+    } finally {
+      if (stored) saveWebSearchResults();
     }
     if (notRun > 0) {
       limitNoticed = true;
