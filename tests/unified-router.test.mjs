@@ -1942,6 +1942,19 @@ test('a refused continuation still ends the response with the searches and a rou
   assert.match(refused.at(-1).response.output[1].content[0].text, /^\[router diagnostic\] The web search ran, but OpenRouter rejected the next step\./);
 });
 
+test('a step after a search that answers nothing ends the response with a router diagnostic, never searches alone', async t => {
+  const empty = sse([{ type: 'response.created', response: { id: 'resp_empty', status: 'in_progress', output: [] } },
+    { type: 'response.completed', response: { id: 'resp_empty', status: 'completed', output: [] } }]);
+  mockUpstreamSequence(t, [{ status: 200, contentType: 'text/event-stream', body: webSearchFirstResponse() }, webSearchResult(200),
+    { status: 200, contentType: 'text/event-stream', body: empty }]);
+  const logsBefore = logEntries.length;
+  const final = parseSse((await exchangeRaw(searchRequest())).rawBody).at(-1);
+  assert.equal(final.type, 'response.completed');
+  assert.deepEqual(final.response.output.map(item => item.type), ['web_search_call', 'message']);
+  assert.match(final.response.output[1].content[0].text, /^\[router diagnostic\] The web search ran, but the next step returned no answer\./);
+  assert.ok(parsedLogEntries().slice(logsBefore).some(entry => entry.event === 'web_search.continuation_failed' && entry.errorCode === 'NO_ANSWER'));
+});
+
 test('a continuation that breaks mid-stream ends the response with a router diagnostic', async t => {
   // The continuation starts streaming, then the connection fails.
   const responses = [

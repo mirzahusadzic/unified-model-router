@@ -114,7 +114,7 @@ How a search runs, from the call to later turns:
 - **The answer:** When the model has no other call pending, the router continues the same response with the results; otherwise Codex runs its calls first, and the next request carries the search.
 - **Later turns:** Requests from the same session carry each search back as a function call with its output, so the model sees what it found and an earlier search reads the same each time.
 - **Storage:** `unified-router/web-search-results.json`, up to 1,000 searches, for 30 days after the session last sends them; a request without a session ID gets its results within the response, and none are kept.
-- **A refused continuation:** Ends as a first request would: Codex compacts after `context_length_exceeded`, retries after a rate limit or server error, and retries on OpenRouter after an Anthropic refusal no retry fixes. Other refusals, or a continuation that breaks off, end with a `[router diagnostic]`.
+- **A refused continuation:** Ends as a first request would: Codex compacts after `context_length_exceeded`, retries after a rate limit or server error, and retries on OpenRouter after an Anthropic refusal no retry fixes. Other refusals, or a continuation that breaks off or answers nothing, end with a `[router diagnostic]`.
 
 ---
 

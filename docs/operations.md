@@ -169,7 +169,7 @@ logs | jq -c 'select(.event == "upstream.usage")
 | To find out | Look for |
 | --- | --- |
 | Did a search run, and what did it cost? | `web_search.executed`: result count, failure, duration, and OpenRouter's `cost`; never the query |
-| Did the response continue after the search? | `web_search.continuation`: its status; `web_search.continuation_failed`: it broke off, and Codex received a `[router diagnostic]` |
+| Did the response continue after the search? | `web_search.continuation`: its status; `web_search.continuation_failed`: it broke off, or answered nothing (`NO_ANSWER`), and Codex received a `[router diagnostic]` |
 | Did a step reach the search limit? | `web_search.limit_reached`: a step asked for more than eight, and `notRun` calls got the limit notice instead; `web_search.limit_ended`: it asked again with no other call pending, and Codex received a `[router diagnostic]` |
 | Why did the stream stop being rewritten? | `web_search.stream_passthrough`: an oversized event switched it to plain pass-through |
 | Were saved results lost? | `web_search.persist_failed`: not saved; `web_search.load_failed`: not read at startup, so earlier searches show as no longer available |

@@ -39,6 +39,7 @@ const searchLimitNotice = `No search ran: this step has used the router's ${maxW
   + 'Answer from the results above, and say what they leave unchecked.';
 const searchLimitDiagnostic = `[router diagnostic] This step used the router's ${maxWebSearchesPerRequest} web searches, `
   + 'and the model asked for more instead of answering. Its searches stay in the thread; say continue to let it answer from them.';
+const noAnswerDiagnostic = '[router diagnostic] The web search ran, but the next step returned no answer. The thread is intact; retry or start a new thread.';
 const webSearchResultCount = 5;
 // A replayed result counts as used, so a thread that keeps replaying a search
 // keeps the same tool result, and with it Claude's cached prefix and signed
@@ -451,6 +452,14 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
         finished = true;
         Object.assign(source, { generationId: event.response?.id ?? null, upstreamFinal: true });
         transform.push(`${block}\n\n`);
+        return;
+      }
+      // A completed step after the router's search with no answer and no call
+      // would end Codex's turn on the searches alone.
+      const answered = upstreamOutput.some(entry => entry?.type === 'message' || callItemTypes.has(entry?.type));
+      if (round.continuation && type === 'response.completed' && !answered) {
+        log('error', 'web_search.continuation_failed', { errorCode: 'NO_ANSWER' });
+        finalize([...upstreamOutput, routerMessage(noAnswerDiagnostic)], { upstream: false });
         return;
       }
       finalize(upstreamOutput);
