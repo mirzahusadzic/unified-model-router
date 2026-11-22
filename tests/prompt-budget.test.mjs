@@ -26,7 +26,7 @@ const installedVersion = spawnSync('codex', ['--version'], { encoding: 'utf8', s
 const versionSkip = !installedVersion ? 'the Codex CLI is not installed'
   : installedVersion !== testedVersion ? `Codex ${installedVersion} is installed; the expectations are for ${testedVersion}` : false;
 
-// Reviewed on macOS with Codex 0.170.0. Feature defaults and tools can differ
+// Reviewed on macOS with Codex 0.171.0. Feature defaults and tools can differ
 // by platform, so other platforms skip until their expectations are added.
 const reviewed = {
   darwin: {
@@ -37,20 +37,20 @@ const reviewed = {
       'update_goal', 'view_image', 'web_search', 'write_stdin',
     ],
     // Upper bounds for a fresh thread's request, about 9% above the measured
-    // 28,097 to 28,131 request bytes (30,598 and 30,664 for the Ultra Sparks)
-    // and 17,445 tool bytes.
+    // 30,254 to 30,288 request bytes (32,755 and 32,821 for the Ultra Sparks)
+    // and 19,602 tool bytes.
     budgets: {
-      'anthropic/claude-fable-5-2': { requestBytes: 30600, toolBytes: 19000 },
-      'anthropic/claude-opus-5-5': { requestBytes: 30600, toolBytes: 19000 },
-      'anthropic/claude-sonnet-5-5': { requestBytes: 30600, toolBytes: 19000 },
-      'deepseek/deepseek-v4.1-flash-1017': { requestBytes: 30600, toolBytes: 19000 },
-      'openrouter/anthropic/claude-opus-5.5': { requestBytes: 30600, toolBytes: 19000 },
-      'openrouter/anthropic/claude-sonnet-5.5': { requestBytes: 30600, toolBytes: 19000 },
-      'openrouter/meta/muse-spark-1.3': { requestBytes: 30600, toolBytes: 19000 },
-      'openrouter/openai/gpt-6.2-sol': { requestBytes: 30600, toolBytes: 19000 },
-      'openrouter/meta/muse-spark-1.3-contributor': { requestBytes: 30600, toolBytes: 19000 },
-      'ultra-spark-private/deepseek-v4.1-flash-1017': { requestBytes: 33400, toolBytes: 19000 },
-      'ultra-spark/deepseek-v4.1-flash-1017': { requestBytes: 33400, toolBytes: 19000 },
+      'anthropic/claude-fable-5-2': { requestBytes: 33000, toolBytes: 21300 },
+      'anthropic/claude-opus-5-5': { requestBytes: 33000, toolBytes: 21300 },
+      'anthropic/claude-sonnet-5-5': { requestBytes: 33000, toolBytes: 21300 },
+      'deepseek/deepseek-v4.1-flash-1017': { requestBytes: 33000, toolBytes: 21300 },
+      'openrouter/anthropic/claude-opus-5.5': { requestBytes: 33000, toolBytes: 21300 },
+      'openrouter/anthropic/claude-sonnet-5.5': { requestBytes: 33000, toolBytes: 21300 },
+      'openrouter/meta/muse-spark-1.3': { requestBytes: 33000, toolBytes: 21300 },
+      'openrouter/openai/gpt-6.2-sol': { requestBytes: 33000, toolBytes: 21300 },
+      'openrouter/meta/muse-spark-1.3-contributor': { requestBytes: 33000, toolBytes: 21300 },
+      'ultra-spark-private/deepseek-v4.1-flash-1017': { requestBytes: 35700, toolBytes: 21300 },
+      'ultra-spark/deepseek-v4.1-flash-1017': { requestBytes: 35700, toolBytes: 21300 },
     },
     // Features Codex turns on under the installer's configuration.
     features: [
@@ -67,7 +67,7 @@ const reviewed = {
       'reasoning_effort_override', 'remote_plugin', 'resize_all_images', 'retain_client_tool_outputs',
       'shell_snapshot', 'shell_tool', 'skill_mcp_dependency_install', 'skill_search', 'sleep_tool', 'sqlite',
       'steer', 'system_proxy_fallback', 'terminal_resize_reflow', 'tool_call_mcp_elicitation',
-      'tool_search_always_defer_mcp_tools', 'tool_suggest', 'tui_app_server', 'ultrafast_mode',
+      'tool_search_always_defer_mcp_tools', 'tool_suggest', 'tui_app_server', 'tui_workspace', 'ultrafast_mode',
       'unbounded_connection_retries', 'unified_exec', 'unified_exec_tty', 'unified_image_budget',
       'untrusted_as_tool_output', 'view_image', 'workspace_dependencies', 'worktrees', 'write_stdin_approval',
     ],
