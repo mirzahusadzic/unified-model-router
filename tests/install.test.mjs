@@ -149,7 +149,7 @@ test('installs with a key file, and fails without a key when it cannot prompt', 
       'anthropic/claude-fable-5-2', 'anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5']) {
       assert.match(summary, new RegExp(`^ {4}codex -m ${slug.replaceAll('.', '\\.')}\\r?$`, 'm'));
     }
-    assert.equal(/^ {4}codex -m gpt-6-astra\r?$/m.test(summary), nativeShown);
+    assert.equal(/^ {4}codex -m gpt-6\.2-astra\r?$/m.test(summary), nativeShown);
     assert.equal(/^Native OpenAI models are hidden from \/model/m.test(summary), !nativeShown);
     assert.match(summary, /^Tracked Codex sessions never mix OpenAI, Claude, or non-training\r?\nUltra Spark models with Muse Spark 1\.3 Contributor or Ultra Spark\r?\nContributor\.\r?$/m);
     for (const line of summary.split(/\r?\n/)) assert.ok(line.length <= 80, line);

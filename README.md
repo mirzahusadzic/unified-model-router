@@ -192,7 +192,7 @@ codex -m anthropic/claude-sonnet-5-5
 | **GPT-6.2 Sol (OpenRouter)** | Strong for text comprehension and rewriting at `xhigh`. Runs on OpenRouter credit, without a ChatGPT plan; the native model keeps its own name. [Details](docs/setup.md#gpt-62-sol) |
 | **Claude Fable 5.2 · Claude Opus 5.5 · Claude Sonnet 5.5** | Hard problems that need Anthropic's models; prompt caching keeps long threads affordable. Runs on Anthropic's API when you add `ANTHROPIC_API_KEY` to the [router settings](docs/setup.md#router-settings), otherwise on OpenRouter. [Details](docs/setup.md#claude-fable-52-opus-55-and-sonnet-55) |
 | **Any `openrouter/<vendor>/<model>`** | Trying another model; [add a catalog entry](docs/setup.md#add-a-model) to list it in `/model`. |
-| **Native OpenAI**, such as `gpt-6-astra` | Requires a ChatGPT plan. |
+| **Native OpenAI**, such as `gpt-6.2-astra` | Requires a ChatGPT plan. |
 
 Muse Spark 1.3 Contributor and Ultra Spark Contributor's workers use Meta's contributor tier, which trains on everything it receives, so use them only for code you are willing to share. DeepSeek's own endpoint may train on prompts too; after an OpenAI or Claude model, or in a non-training Ultra Spark session, a session's OpenRouter requests go only to endpoints that keep no data, so pin DeepSeek to one to use it there. The router refuses to mix them with OpenAI, Claude, or non-training Ultra Spark models in a tracked Codex session; requests without a session ID are not tracked ([details](docs/routing.md#provider-isolation)).
 

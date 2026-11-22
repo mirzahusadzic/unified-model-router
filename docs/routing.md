@@ -16,7 +16,7 @@ The same catalog serves main threads, spawned agents, and any interface that exp
 
 | Requested model | Upstream service | Upstream model |
 | --- | --- | --- |
-| `gpt-6-astra` | Native Codex backend | `gpt-6-astra` |
+| `gpt-6.2-astra` | Native Codex backend | `gpt-6.2-astra` |
 | `deepseek/deepseek-v4.1-flash-1017` | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` |
 | `ultra-spark-private/deepseek-v4.1-flash-1017` | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` |
 | `ultra-spark/deepseek-v4.1-flash-1017` | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` |

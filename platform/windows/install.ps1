@@ -352,7 +352,7 @@ Start Codex with a model, or switch with /model:
     codex -m anthropic/claude-sonnet-5-5
 '@
 if ($NativeModels -eq 'show') {
-    Write-Host "  GPT-6 Astra (requires a ChatGPT plan)`n    codex -m gpt-6-astra"
+    Write-Host "  GPT-6.2 Astra (requires a ChatGPT plan)`n    codex -m gpt-6.2-astra"
 }
 Write-Host @'
 

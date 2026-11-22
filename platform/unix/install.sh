@@ -393,7 +393,7 @@ Start Codex with a model, or switch with /model:
     codex -m anthropic/claude-sonnet-5-5
 EOF
 if [[ "$native_models" == show ]]; then
-  printf '  GPT-6 Astra (requires a ChatGPT plan)\n    codex -m gpt-6-astra\n'
+  printf '  GPT-6.2 Astra (requires a ChatGPT plan)\n    codex -m gpt-6.2-astra\n'
 fi
 cat <<'EOF'
 

@@ -250,7 +250,7 @@ CODEX_ROUTER_DISABLE_ANALYTICS=0 node install.mjs
 
 #### Native OpenAI models
 
-Codex's bundled models are native OpenAI models and need a ChatGPT plan. Hidden ones stay usable by name, such as `codex -m gpt-6-astra`; rerun the installer after your plan changes.
+Codex's bundled models are native OpenAI models and need a ChatGPT plan. Hidden ones stay usable by name, such as `codex -m gpt-6.2-astra`; rerun the installer after your plan changes.
 
 | `CODEX_ROUTER_NATIVE_MODELS` | `/model` lists native models |
 | --- | --- |
@@ -325,7 +325,7 @@ codex --profile unified-openrouter \
 | **Claude Fable 5.2** | `anthropic/claude-fable-5-2` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet; see [Claude Fable 5.2](#claude-fable-52) |
 | **Claude Opus 5.5** | `anthropic/claude-opus-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter, as for Sonnet |
 | **Claude Sonnet 5.5** | `anthropic/claude-sonnet-5-5` | 1,000,000 tokens | Anthropic's API or OpenRouter; see [Claude Fable 5.2, Opus 5.5 and Sonnet 5.5](#claude-fable-52-opus-55-and-sonnet-55) |
-| Native OpenAI models | for example `gpt-6-astra` | bundled limits | Require a ChatGPT plan |
+| Native OpenAI models | for example `gpt-6.2-astra` | bundled limits | Require a ChatGPT plan |
 
 #### DeepSeek context window
 
