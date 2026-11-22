@@ -2911,6 +2911,27 @@ test('web search on Claude\'s direct route runs through OpenRouter and continues
   assert.match(continuation.body.messages[2].content[0].content, /688 contributors/);
 });
 
+test('a string input stays the question on the step after a search, on both routes', async t => {
+  mockUpstreamSequence(t, [
+    { status: 200, contentType: 'text/event-stream', body: webSearchFirstResponse() }, webSearchResult(200),
+    { status: 200, contentType: 'text/event-stream', body: continuationResponse },
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'tool_use', id: 'toolu_search', name: 'web_search', input: {} },
+      deltas: [{ type: 'input_json_delta', partial_json: '{"query":"openai codex contributors"}' }] }], { stopReason: 'tool_use' }) },
+    webSearchResult(200),
+    { status: 200, contentType: 'text/event-stream', body: claudeStream([{ start: { type: 'text', text: '' },
+      deltas: [{ type: 'text_delta', text: 'GitHub lists 688 contributors.' }] }]) },
+  ]);
+  const before = forwarded.length;
+  await exchangeRaw(searchRequest('How many contributors does openai/codex have?'));
+  const [, , openrouterNext] = forwarded.slice(before);
+  assert.deepEqual(openrouterNext.body.input[0], { role: 'user', content: 'How many contributors does openai/codex have?' });
+  await exchangeRaw(claudeRequest('How many contributors?', { tools: [{ type: 'web_search' }] }), inClaudeSession('claude-string-input'));
+  const [claudeFirst, , claudeNext] = forwarded.slice(-3);
+  // The step after the search extends the first step's messages, the question included.
+  assert.deepEqual(claudeNext.body.messages[0], claudeFirst.body.messages[0]);
+  assert.deepEqual(claudeNext.body.messages[0].content, [{ type: 'text', text: 'How many contributors?' }]);
+});
+
 test('on Claude\'s direct route, a call past the search limit gets the notice, and the next turn extends the step unchanged', async t => {
   const searchBlocks = Array.from({ length: 9 }, (_, index) => ({ start: { type: 'tool_use', id: `toolu_s${index}`, name: 'web_search', input: {} },
     deltas: [{ type: 'input_json_delta', partial_json: JSON.stringify({ query: `q${index}` }) }] }));

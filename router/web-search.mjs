@@ -518,8 +518,10 @@ export function openRouterStream({ interceptSearches = false, requestBody, sendC
     earlierOutput = [...earlierOutput, ...output];
     earlierUpstreamItems = [...earlierUpstreamItems, ...upstreamOutput, ...results];
     round = newRound(true);
-    const continued = await sendContinuation({ ...requestBody, input: [...(Array.isArray(requestBody.input) ? requestBody.input : []),
-      ...earlierUpstreamItems] });
+    // A string input is the user's message, as the Messages translation reads it.
+    const input = typeof requestBody.input === 'string' ? [{ role: 'user', content: requestBody.input }]
+      : Array.isArray(requestBody.input) ? requestBody.input : [];
+    const continued = await sendContinuation({ ...requestBody, input: [...input, ...earlierUpstreamItems] });
     if (closed()) {
       continued?.stream?.destroy();
       return;
