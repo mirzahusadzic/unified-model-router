@@ -2324,6 +2324,24 @@ test('Claude slugs run on Anthropic\'s API as Messages requests with the history
   assert.equal(routes['claude-translate'].route, 'anthropic');
 });
 
+test('Codex\'s offer of compressed responses stays with the router, which asks every upstream for plain bodies', async () => {
+  // Codex 0.171 sends this; the router reads and rewrites upstream streams.
+  const offer = { 'accept-encoding': 'zstd,gzip' };
+  for (const [body, headers, hostname] of [
+    [{ model: 'gpt-6-astra', input: mixedHistory }, offer, 'chatgpt.com'],
+    [{ model: 'deepseek/deepseek-v4.1-flash-1017', input: mixedHistory }, offer, 'openrouter.ai'],
+    [{ model: 'anthropic/claude-sonnet-5-5', input: [{ role: 'user', content: 'howdy' }] },
+      { ...offer, ...inClaudeSession('claude-accept-encoding') }, 'api.anthropic.com'],
+  ]) {
+    const result = await exchangeRaw(JSON.stringify(body), headers);
+    assert.equal(result.status, 200, result.rawBody);
+    const upstream = forwarded.at(-1);
+    assert.equal(upstream.hostname, hostname);
+    assert.equal(upstream.headers['accept-encoding'], 'identity');
+    assert.equal(result.headers['content-encoding'], undefined);
+  }
+});
+
 test('a caller can put Claude\'s cache breakpoint at the end of its instructions, or set none; Codex\'s stays as it was', async () => {
   const request = JSON.parse(claudeRequest('Classify this line.', { instructions: 'Shared rubric.' }));
   const marked = value => JSON.stringify(value).includes('cache_control');
