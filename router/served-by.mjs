@@ -131,7 +131,7 @@ export function servedByStream({ provider = null, route = null, endpoint = null,
         stream.push(`${block}\n\n`);
         continue;
       }
-      // A final event the router wrote, such as after a refused search step, names no provider.
+      // A final event the router wrote, such as after a refused search step, names its provider `unknown`.
       event.response.provider = source.upstreamFinal === false ? 'unknown' : provider ?? 'unknown';
       if (route) event.response.route = route;
       if (thinking) event.response.thinking = thinking;

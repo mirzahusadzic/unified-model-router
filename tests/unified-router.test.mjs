@@ -2348,7 +2348,7 @@ test('Claude slugs run on Anthropic\'s API as Messages requests with the history
   assert.equal(body.max_tokens, 64000);
   assert.deepEqual(body.cache_control, { type: 'ephemeral' });
   assert.deepEqual(body.thinking, { type: 'adaptive', display: 'summarized', block_binding: { prefix_mismatch_behavior: 'drop_block' } });
-  // Claude cannot turn thinking off, so the lowest efforts become low.
+  // `minimal` keeps Claude's thinking on, at its lowest effort, low.
   assert.deepEqual(body.output_config, { effort: 'low' });
   assert.deepEqual(body.tool_choice, { type: 'auto' });
   assert.deepEqual(body.tools.map(tool => tool.name), ['exec_command', 'multi_agent_v1__spawn_agent', 'web_search']);
