@@ -91,7 +91,7 @@ setInterval(() => {
 
 // Results belong to the session that searched: call IDs are unique only
 // within a thread, so another session's call with the same ID never sees them.
-const webSearchKey = (scope, callId) => JSON.stringify([scope ?? '', callId]);
+const webSearchKey = (scope, callId) => JSON.stringify([scope, callId]);
 
 // Without a session there is nothing to scope results to, so none are kept.
 function storedWebSearchResults(scope, callId) {

@@ -477,7 +477,6 @@ function anthropicResponseStream({ declared, log }) {
   };
 
   const finish = () => {
-    if (finished) return;
     finished = true;
     const items = output.filter(Boolean);
     const final = { ...response, output: items, usage: responsesUsage(usage) };
