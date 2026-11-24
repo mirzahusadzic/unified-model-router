@@ -1248,6 +1248,21 @@ test('web-search offers, restores, and respects caller-owned names', () => {
   assert.ok(noScope.input.some(item => item?.type === 'function_call' && item?.name === 'web_search'));
 });
 
+test('web-search restores missing call IDs and absent queries deterministically', () => {
+  const request = {
+    tools: [],
+    input: [
+      { type: 'web_search_call', action: null },
+      { type: 'web_search_call', id: '', action: { query: 42 } },
+    ],
+  };
+  const result = webSearch.overrideWebSearchForOpenRouter(request, uniqueId('ws-missing-id'));
+  assert.equal(result.restored, 2);
+  const calls = request.input.filter(item => item?.type === 'function_call');
+  assert.deepEqual(calls.map(call => call.call_id), ['ws_restored_1', 'ws_restored_2']);
+  assert.deepEqual(calls.map(call => JSON.parse(call.arguments).query), ['', '']);
+});
+
 test('web-search effort reads the catalog or falls back to low', () => {
   writeFileSync(catalogFile, JSON.stringify({ models: [
     { slug: 'test/none-model', supported_reasoning_levels: [{ effort: 'high' }, { effort: 'none' }] },
