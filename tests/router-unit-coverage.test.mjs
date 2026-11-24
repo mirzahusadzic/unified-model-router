@@ -2069,6 +2069,7 @@ test('config derives the router env file from the home directory when unset', as
   `;
   const { stdout } = await runChild(code, {
     HOME: home,
+    USERPROFILE: home,
     CODEX_ROUTER_TOKEN: 'a'.repeat(64),
     OPENROUTER_API_KEY: '',
     ANTHROPIC_API_KEY: '',
