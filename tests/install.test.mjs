@@ -9,6 +9,16 @@ import { logicalLines } from '../scripts/toml-lines.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const windows = process.platform === 'win32';
+
+function writeExecutable(file, body) {
+  writeFileSync(file, body, { mode: 0o700 });
+}
+
+function windowsPlatformPreload(directory) {
+  const file = join(directory, 'win32-platform.cjs');
+  writeFileSync(file, "Object.defineProperty(process, 'platform', { value: 'win32' });\n");
+  return file;
+}
 // The installer or verifier for this platform under platform/unix or platform/windows.
 const platformScript = name => join(root, 'platform', windows ? 'windows' : 'unix', name + (windows ? '.ps1' : '.sh'));
 // Each setting with its table, so assertions survive layout changes.
@@ -214,6 +224,8 @@ test('install.mjs runs the platform installer and verifier with translated flags
   const installed = entry(['--no-service', '--api-key-file', keyFile]);
   assert.equal(installed.status, 0, installed.stderr);
   assert.match(readFileSync(join(home, 'unified-router', 'openrouter.env'), 'utf8'), /^OPENROUTER_API_KEY=synthetic-entry-key$/m);
+  const forced = entry(['--no-service', '--force', '--api-key-file', keyFile]);
+  assert.equal(forced.status, 0, forced.stderr);
   const verified = entry(['--verify', '--no-service']);
   assert.equal(verified.status, 0, verified.stderr);
   assert.match(verified.stdout, /Install looks valid/);
@@ -250,6 +262,84 @@ test('install.mjs warns, without stopping, when Codex differs from the tested ve
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stderr, /tested with Codex 0\.172\.0, but the Codex CLI is 9\.9\.9/);
   assert.match(result.stderr, /npm install -g @openai\/codex@0\.172\.0/);
+});
+
+test('install.mjs crosses the Windows command path and carries its flags', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'router-install-win32-entry-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const home = join(directory, 'codex-home');
+  const bin = join(directory, 'bin');
+  const log = join(directory, 'powershell.log');
+  mkdirSync(home);
+  mkdirSync(bin);
+  const preload = windowsPlatformPreload(directory);
+  writeExecutable(join(bin, 'codex'), '#!/bin/sh\nif [ -n "$FAKE_CODEX_STATUS" ]; then exit "$FAKE_CODEX_STATUS"; fi\n'
+    + 'if [ "$1" = "--version" ]; then echo "codex-cli 0.172.0"; '
+    + 'elif [ "$1 $2 $3" = "app-server daemon version" ]; then echo \'{"status":"running","appServerVersion":"0.172.0"}\'; fi\n');
+  writeExecutable(join(bin, 'powershell.exe'), '#!/bin/sh\nprintf "%s\\n" "$@" >> "$POWERSHELL_LOG"\nexit "${POWERSHELL_STATUS:-0}"\n');
+  const keyFile = join(directory, 'openrouter.key');
+  writeFileSync(keyFile, 'synthetic-entry-key\n', { mode: 0o600 });
+  const entry = (args, extraEnv = {}) => spawnSync(process.execPath,
+    ['--require', preload, join(root, 'install.mjs'), ...args], {
+      encoding: 'utf8', timeout: 30000, input: '',
+      env: { ...process.env, HOME: directory, CODEX_HOME: home, PATH: bin + ':' + process.env.PATH,
+        OPENROUTER_API_KEY: '', CODEX_ROUTER_TOKEN: '', POWERSHELL_LOG: log, ...extraEnv },
+    });
+
+  const installed = entry(['--no-service', '--force', '--api-key-file', keyFile]);
+  assert.equal(installed.status, 0, installed.stderr);
+  assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), [
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(root, 'platform', 'windows', 'install.ps1'),
+    '-Force', '-NoService', '-ApiKeyFile', keyFile,
+  ]);
+  rmSync(log);
+  const service = entry(['--force', '--api-key-file', keyFile]);
+  assert.equal(service.status, 0, service.stderr);
+  assert.match(readFileSync(log, 'utf8'), /install\.ps1\r?\n-Force\r?\n-ApiKeyFile/m);
+  rmSync(log);
+  const changed = entry(['--no-service', '--change-api-key']);
+  assert.equal(changed.status, 0, changed.stderr);
+  assert.match(readFileSync(log, 'utf8'), /-NoService\r?\n-ChangeApiKey/m);
+  rmSync(log);
+  const verified = entry(['--verify', '--no-service']);
+  assert.equal(verified.status, 0, verified.stderr);
+  assert.match(readFileSync(log, 'utf8'), /verify-install\.ps1/);
+
+  // A failed Codex probe and an invalid daemon record only suppress the
+  // version warning; they do not stop installation.
+  rmSync(log);
+  const probeFailed = entry(['--no-service'], { FAKE_CODEX_STATUS: '1' });
+  assert.equal(probeFailed.status, 0, probeFailed.stderr);
+  assert.doesNotMatch(probeFailed.stderr, /Warning: this router is tested with Codex/);
+
+  const failed = entry(['--no-service'], { POWERSHELL_STATUS: '7' });
+  assert.equal(failed.status, 7, failed.stderr);
+  const missing = spawnSync(process.execPath, ['--require', preload, join(root, 'install.mjs'), '--no-service'], {
+    encoding: 'utf8', timeout: 30000,
+    env: { ...process.env, HOME: directory, CODEX_HOME: home, PATH: join(directory, 'missing-bin'),
+      OPENROUTER_API_KEY: 'synthetic-entry-key', CODEX_ROUTER_TOKEN: '' },
+  });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /Could not run .*install\.ps1/);
+});
+
+test('install.mjs exits 1 when the platform installer ends without a status', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'router-install-signal-entry-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const home = join(directory, 'codex-home');
+  const bin = join(directory, 'bin');
+  mkdirSync(home);
+  mkdirSync(bin);
+  const preload = windowsPlatformPreload(directory);
+  writeExecutable(join(bin, 'codex'), '#!/bin/sh\nexit 0\n');
+  writeExecutable(join(bin, 'powershell.exe'), '#!/bin/sh\nkill -TERM $$\n');
+  const result = spawnSync(process.execPath,
+    ['--require', preload, join(root, 'install.mjs'), '--no-service'], {
+      encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, HOME: directory, CODEX_HOME: home, PATH: bin + ':' + process.env.PATH,
+        OPENROUTER_API_KEY: 'synthetic-entry-key', CODEX_ROUTER_TOKEN: '' },
+    });
+  assert.equal(result.status, 1, result.stderr);
 });
 
 test('install.mjs --help lists every installer setting in docs/setup.md, and errors point to it', () => {
