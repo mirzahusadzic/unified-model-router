@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { catalogFiles } from '../scripts/catalog-files.mjs';
-import { applyOpenRouterPrompts, readPrompts, suffixField, usesOpenRouterPrompts } from '../scripts/openrouter-prompts.mjs';
+import { applyOpenRouterPrompts, namesRouterModel, readPrompts, suffixField, usesOpenRouterPrompts } from '../scripts/openrouter-prompts.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const readEntry = name => JSON.parse(readFileSync(join(root, 'catalog', name), 'utf8'));
@@ -319,4 +319,133 @@ test('verify-catalog checks router entries against the repository and reports wh
   assert.doesNotMatch(result.stderr, /\n\s+at /);
   assert.equal(verify().status, 2);
   assert.equal(verify('--report').status, 2);
+});
+
+// Every router entry in the catalog, whether its file holds one object or an
+// array of them, for the contract tests below.
+const routerEntries = () => {
+  const collected = [];
+  for (const name of catalogFiles(join(root, 'catalog'))) {
+    const value = readEntry(name);
+    const list = Array.isArray(value) ? value : [value];
+    assert.ok(list.length > 0, `${name}: no model entries`);
+    for (const entry of list) {
+      assert.ok(entry !== null && typeof entry === 'object' && !Array.isArray(entry),
+        `${name}: model entry must be an object`);
+      collected.push({ name, entry });
+    }
+  }
+  assert.ok(collected.length > 0, 'the catalog has no router entries');
+  return collected;
+};
+
+test('every catalog entry has a unique slug on a router prefix', () => {
+  const seen = new Set();
+  for (const { name, entry } of routerEntries()) {
+    assert.equal(typeof entry.slug, 'string', `${name}: missing model slug`);
+    assert.ok(entry.slug.length > 0, `${name}: missing model slug`);
+    // The same prefix rules the catalog build enforces (see scripts/build-catalog.mjs).
+    assert.ok(usesOpenRouterPrompts(entry.slug),
+      `${entry.slug}: must start with anthropic/, deepseek/, openrouter/, ultra-spark/, or ultra-spark-private/`);
+    assert.ok(namesRouterModel(entry.slug), `${entry.slug}: needs a model name after its prefix`);
+    assert.ok(!seen.has(entry.slug), `duplicate catalog slug ${entry.slug}`);
+    seen.add(entry.slug);
+  }
+});
+
+test('every catalog entry names and describes its model for the picker', () => {
+  for (const { name, entry } of routerEntries()) {
+    const where = `${name}: ${entry.slug}`;
+    assert.equal(typeof entry.display_name, 'string', `${where}: missing display name`);
+    assert.ok(entry.display_name.length > 0, `${where}: missing display name`);
+    assert.equal(typeof entry.description, 'string', `${where}: missing description`);
+    assert.ok(entry.description.length > 0, `${where}: missing description`);
+    // verify-catalog.mjs lists every entry whose visibility is not `hide`.
+    assert.ok(['list', 'hide'].includes(entry.visibility), `${where}: visibility must be list or hide`);
+    assert.equal(typeof entry.supported_in_api, 'boolean', `${where}: supported_in_api must be a boolean`);
+    assert.ok(Number.isInteger(entry.priority) && entry.priority >= 0,
+      `${where}: priority must be a non-negative integer`);
+  }
+});
+
+test('every catalog entry sets positive context limits with room for the thread', () => {
+  for (const { name, entry } of routerEntries()) {
+    const where = `${name}: ${entry.slug}`;
+    for (const field of ['context_window', 'max_context_window']) {
+      assert.ok(Number.isInteger(entry[field]) && entry[field] > 0,
+        `${where}: ${field} must be a positive integer`);
+    }
+    assert.ok(entry.max_context_window >= entry.context_window,
+      `${where}: max_context_window must cover context_window`);
+    assert.ok(typeof entry.effective_context_window_percent === 'number'
+      && entry.effective_context_window_percent > 0 && entry.effective_context_window_percent <= 100,
+      `${where}: effective_context_window_percent must be a percentage`);
+    assert.ok(entry.auto_compact_token_limit === null
+      || (Number.isInteger(entry.auto_compact_token_limit) && entry.auto_compact_token_limit > 0),
+      `${where}: auto_compact_token_limit must be null or a positive integer`);
+  }
+});
+
+test('every catalog entry offers valid reasoning levels that include its default', () => {
+  // Effort names the router handles: OpenRouter's standard levels plus the
+  // values its translation maps (see router/adapt.mjs and router/anthropic.mjs).
+  const knownEfforts = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'none', 'minimal']);
+  for (const { name, entry } of routerEntries()) {
+    const where = `${name}: ${entry.slug}`;
+    assert.ok(Array.isArray(entry.supported_reasoning_levels) && entry.supported_reasoning_levels.length > 0,
+      `${where}: needs at least one reasoning level`);
+    const efforts = entry.supported_reasoning_levels.map(level => {
+      assert.ok(level !== null && typeof level === 'object' && !Array.isArray(level),
+        `${where}: reasoning level must be an object`);
+      assert.ok(knownEfforts.has(level.effort), `${where}: unknown reasoning effort ${String(level.effort)}`);
+      assert.equal(typeof level.description, 'string', `${where}: reasoning level needs a description`);
+      assert.ok(level.description.length > 0, `${where}: reasoning level needs a description`);
+      return level.effort;
+    });
+    assert.equal(new Set(efforts).size, efforts.length, `${where}: reasoning efforts must be unique`);
+    assert.ok(efforts.includes(entry.default_reasoning_level),
+      `${where}: default_reasoning_level must be one of the offered efforts`);
+  }
+});
+
+test('every catalog entry renders the maintained prompts into its message template', () => {
+  for (const { name, entry } of routerEntries()) {
+    const where = `${name}: ${entry.slug}`;
+    assert.equal(typeof entry.base_instructions, 'string', `${where}: missing base instructions`);
+    assert.ok(entry.base_instructions.length > 0, `${where}: missing base instructions`);
+    assert.ok(entry.model_messages !== null && typeof entry.model_messages === 'object'
+      && !Array.isArray(entry.model_messages), `${where}: missing model messages`);
+    for (const field of ['instructions_template', 'persistent_instructions']) {
+      assert.equal(typeof entry.model_messages[field], 'string', `${where}: missing ${field}`);
+      assert.ok(entry.model_messages[field].length > 0, `${where}: missing ${field}`);
+    }
+    // The renderer writes the same text to both (see scripts/openrouter-prompts.mjs).
+    assert.equal(entry.model_messages.instructions_template, entry.base_instructions,
+      `${where}: instructions_template must match base_instructions`);
+    const suffix = entry[suffixField];
+    if (suffix !== undefined) {
+      assert.match(suffix, /^[a-z0-9-]+\.md$/,
+        `${where}: ${suffixField} must name a .md file in the prompts directory`);
+      assert.ok(existsSync(join(root, 'prompts', suffix)), `${where}: prompt suffix ${suffix} is missing`);
+    }
+  }
+});
+
+test('every catalog entry declares text input and its tool and shell support', () => {
+  for (const { name, entry } of routerEntries()) {
+    const where = `${name}: ${entry.slug}`;
+    assert.ok(Array.isArray(entry.input_modalities) && entry.input_modalities.length > 0,
+      `${where}: needs at least one input modality`);
+    for (const modality of entry.input_modalities) {
+      assert.equal(typeof modality, 'string', `${where}: input modality must be a string`);
+      assert.ok(modality.length > 0, `${where}: input modality must be a string`);
+    }
+    assert.ok(entry.input_modalities.includes('text'), `${where}: input modalities must include text`);
+    assert.equal(typeof entry.supports_parallel_tool_calls, 'boolean',
+      `${where}: supports_parallel_tool_calls must be a boolean`);
+    assert.equal(typeof entry.supports_search_tool, 'boolean',
+      `${where}: supports_search_tool must be a boolean`);
+    assert.equal(typeof entry.shell_type, 'string', `${where}: missing shell type`);
+    assert.ok(entry.shell_type.length > 0, `${where}: missing shell type`);
+  }
 });
