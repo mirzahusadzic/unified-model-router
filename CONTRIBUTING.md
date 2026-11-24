@@ -37,7 +37,7 @@ The installed router is a separate copy under your Codex home directory. Run `no
 | `platform/` | Per-OS installers and verifiers in `unix/` and `windows/`, plus the Windows access-control helper; see the [platform index](platform/README.md). |
 | `scripts/` | Verifiers, installer helpers, and development tools; see [Scripts](#scripts). |
 | `tests/` | `node --test` suites, plus a Windows access-control test; see [Tests](#tests). |
-| `docs/` | [Setup and configuration](docs/setup.md), [how routing works](docs/routing.md), and [services and troubleshooting](docs/operations.md). |
+| `docs/` | [Setup and configuration](docs/setup.md), [how routing works](docs/routing.md), [services and troubleshooting](docs/operations.md), and [test posture](docs/test-posture.md). |
 
 #### Scripts
 
@@ -71,23 +71,9 @@ Shared modules: `scripts/openrouter-prompts.mjs` holds the prompt rules for Open
 
 #### Tests
 
-`node --test` runs every `.test.mjs` file on macOS, Linux, and Windows. The tests use synthetic upstreams and need no credentials or network. `tests/prompt-budget.test.mjs` also needs the tested Codex CLI and skips without it, as in CI.
+`node --test` runs every `.test.mjs` file on macOS, Linux, and Windows. The tests use synthetic upstreams and need no credentials or network. `tests/prompt-budget.test.mjs` also needs the tested Codex CLI and skips without it in the main matrix; the compatibility workflow installs that CLI.
 
-[CI](.github/workflows/ci.yml) runs on pushes, pull requests, and manual dispatch. It tests Linux with Node.js 20, 22, and 24, plus macOS and Windows with Node.js 24, checks JavaScript, Bash, and Windows PowerShell syntax, and validates the model JSON. Live provider compatibility and background-service installation need separate manual verification.
-
-| Test file | Covers | Platforms |
-| --- | --- | --- |
-| `tests/unified-router.test.mjs` | Routing, history repair, reasoning and structured-output adaptation, OpenRouter recovery, provider isolation, endpoint preferences, header allowlists, streaming, web search, Claude's Messages translation and route fallback, and logs. | All |
-| `tests/credentials.test.mjs` | Credential files and configuration merging: tokens, managed apps, analytics, and agent settings, and TOML strings and comments. | All |
-| `tests/catalog.test.mjs` | Catalog entries, rendered prompts and the Codex tools they must not mention, prompt suffixes, catalog-build validation, and `verify-catalog.mjs`. | All |
-| `tests/native-models.test.mjs` | ChatGPT plan detection and hiding native models. | All |
-| `tests/install.test.mjs` | End-to-end installs without a service through `install.mjs` and the platform scripts, collision guards, key sources, setting validation, the closing summary and verifier report, the help text and argument errors, the daemon restart and pin step, and that the Unix scripts need no `jq`. Runs `platform/unix/install.sh` on macOS and Linux and `platform/windows/install.ps1` on Windows. | All, per-platform installer |
-| `tests/log-level.test.mjs` | Router startup settings: log levels, endpoint preferences, and a corrupt isolation record. | All |
-| `tests/verify-health.test.mjs` | The health verifier's capability, revision, redirect, and service-process checks. | All |
-| `tests/session-retention.test.mjs` | Session sides and Claude routes expiring 30 days after their last request while the router keeps running. | All |
-| `tests/service-pids.test.mjs` | The Unix service-process lookup and the installers' readiness wait, with fake `launchctl`, `systemctl`, and `pgrep`. | macOS, Linux |
-| `tests/prompt-budget.test.mjs` | What the installed Codex sends router models under the installer's configuration, through a local fake upstream: the tool list, request and tool-definition sizes, the features it turns on, and that apps and guardian stay off. Skips without the tested Codex CLI or reviewed expectations for the platform. | macOS (reviewed); others skip |
-| `platform/windows/private-path.test.ps1` | Current-user-only access control lists on Windows. CI runs it in a separate step. | Windows |
+[CI](.github/workflows/ci.yml) runs on pushes, pull requests, and manual dispatch across Ubuntu (Node.js 20, 22, and 24) plus macOS and Windows (Node.js 24). Each leg runs the suite once: plain tests on Node.js 20, built-in coverage elsewhere, with 100% line, branch, and function thresholds enforced only on the canonical Ubuntu Node.js 24 leg. JavaScript, Bash, and Windows PowerShell syntax checks, catalog JSON validation, and the Windows access-control test ride along. [Test posture](docs/test-posture.md) separates the caller contract, coverage, the environment matrix, and the live checks CI cannot do, with the per-file inventory.
 
 ---
 

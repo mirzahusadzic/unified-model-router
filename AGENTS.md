@@ -75,6 +75,7 @@ The tested version is `testedCodexVersion` in `install.mjs`. An unpinned daemon 
 ### Validate and document
 
 - Router behavior change: focused regression test in `tests/unified-router.test.mjs`, then `node --test`, which also checks the rendered prompts in catalog entries.
+- Test posture: [test posture](docs/test-posture.md) maps contracts, platform checks, and live gaps. The canonical Ubuntu Node 24 leg enforces 100% line, branch, and function coverage over `install.mjs`, `router/*.mjs`, and `scripts/*.mjs`; Node 20 runs plain tests.
 - Shell edits: `bash -n` on each changed script. CI (`.github/workflows/ci.yml`) also checks JavaScript and PowerShell syntax and the model JSON.
 - Docs: README brief, details in `docs/`; docs-only changes need link and fact checks, not a full test run. Shape: top-level sections are `###` headings under a `---` rule, since GitHub underlines `#` and `##`; section leads of two or three sentences at most; tables only for tabular data, run-in lists otherwise; explanation before a code block, no comments inside; at most one alert per section; each link once per page.
 - Commits: a Conventional Commits subject of at most 72 characters, a blank line, then a body hard-wrapped at 72; check with `git log --format=%B origin/main..main | awk 'length > 72'`. Messages stay objective and about this project: they describe the router's change, not the programs that call it.
