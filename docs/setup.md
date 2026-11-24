@@ -67,7 +67,7 @@ node install.mjs
 
 #### Codex version
 
-The router is tested with Codex **0.171.0**, and newer versions can change what it relies on. `node install.mjs` warns, without stopping, when the CLI or the running daemon differs; `codex app-server daemon version` shows both.
+The router is tested with Codex **0.172.0**, and newer versions can change what it relies on. `node install.mjs` warns, without stopping, when the CLI or the running daemon differs; `codex app-server daemon version` shows both.
 
 | Codex | Changed for the router |
 | --- | --- |
@@ -77,7 +77,7 @@ The router is tested with Codex **0.171.0**, and newer versions can change what 
 
 | To | Do |
 | --- | --- |
-| Install the tested version | `npm install -g @openai/codex@0.171.0` |
+| Install the tested version | `npm install -g @openai/codex@0.172.0` |
 | Change Codex versions | Install the CLI version you want, rerun `node install.mjs`, which rebuilds the catalog from its bundled models and pins the daemon to it, then run `node install.mjs --verify` |
 | Go back to an earlier version | Use its `codex-<version>` tag, the last router commit verified with it; see [Return to an earlier Codex version](operations.md#return-to-an-earlier-codex-version) |
 
@@ -307,7 +307,7 @@ codex --profile unified-openrouter \
 ```
 
 - **Models:** any router model in the catalog, and Ultra Spark's Muse workers use the same profile; use the main configuration for native OpenAI models.
-- **Not a sandbox:** it supplies transport settings, not prompts, plugins, or task policies, and still inherits your other user and project settings. Codex 0.171.0 does not load it with `--ignore-user-config`.
+- **Not a sandbox:** it supplies transport settings, not prompts, plugins, or task policies, and still inherits your other user and project settings. Codex 0.172.0 does not load it with `--ignore-user-config`.
 - **Isolated execution:** clients that need it must manage their own Codex home, instructions, tools, permissions, and output validation.
 
 ---
@@ -469,7 +469,7 @@ node install.mjs
 
 This project is licensed under [Apache-2.0](../LICENSE), and [NOTICE](../NOTICE) preserves the applicable OpenAI attribution. It is an independent community project.
 
-- **Catalog templates:** the DeepSeek entry includes model-message templates that match the bundled catalog of `@openai/codex` **0.171.0**, whose package metadata declares Apache-2.0; `REUSE.toml` identifies those sections and records each entry's modifications. The other entries derive from the same template, as it records.
+- **Catalog templates:** the DeepSeek entry includes model-message templates that match the bundled catalog of `@openai/codex` **0.172.0**, whose package metadata declares Apache-2.0; `REUSE.toml` identifies those sections and records each entry's modifications. The other entries derive from the same template, as it records.
 - **Redistributing:** keep the licenses and applicable notices with an entry or a modified copy, and record your own changes.
 - **Prompts:** the main and persistent instructions in `prompts/` are maintained separately and are not verbatim copies of the corresponding instructions in the installed Codex catalog; this comparison does not establish originality against other sources. Native model entries are read from the user's installed Codex during installation.
 - **Service terms:** the software license does not grant access to models or hosted services. Access to OpenAI, OpenRouter, and each model provider, including Meta's contributor tier, remains subject to their respective service terms.

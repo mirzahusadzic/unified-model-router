@@ -2429,7 +2429,7 @@ test('Claude slugs run on Anthropic\'s API as Messages requests with the history
 });
 
 test('Codex\'s offer of compressed responses stays with the router, which asks every upstream for plain bodies', async () => {
-  // Codex 0.171 sends this; the router reads and rewrites upstream streams.
+  // Codex 0.172 sends this; the router reads and rewrites upstream streams.
   const offer = { 'accept-encoding': 'zstd,gzip' };
   for (const [body, headers, hostname] of [
     [{ model: 'gpt-6-astra', input: mixedHistory }, offer, 'chatgpt.com'],

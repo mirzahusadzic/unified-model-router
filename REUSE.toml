@@ -1,7 +1,7 @@
 version = 1
 
 # Model catalog entries. Each is derived from the bundled model catalog of
-# @openai/codex 0.171.0 (`codex debug models --bundled`,
+# @openai/codex 0.172.0 (`codex debug models --bundled`,
 # https://github.com/openai/codex) and modified for Unified Model Router in
 # 2026. Their model_messages sections approvals, collaboration_modes,
 # auto_review, multi_agent, token_budget, guardian_v2, and
