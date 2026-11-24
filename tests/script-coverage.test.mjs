@@ -27,6 +27,7 @@ function baseEnv(extra = {}) {
     CODEX_ROUTER_REPO_ROOT: '',
     CODEX_ROUTER_PLATFORM: '',
     CODEX_ROUTER_SOURCE_DIR: '',
+    NODE_NO_WARNINGS: '1',
     ...extra,
   };
 }

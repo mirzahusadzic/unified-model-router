@@ -10,10 +10,12 @@ import https from 'node:https';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { mock, test } from 'node:test';
 
 const execFileAsync = promisify(execFile);
+const moduleUrl = name => pathToFileURL(join(process.cwd(), 'router', name)).href;
 
 const routerHome = mkdtempSync(join(tmpdir(), 'codex-router-unit-'));
 const catalogFile = join(routerHome, 'models.json');
@@ -767,7 +769,7 @@ test('config reads quoted environment files', async () => {
   const code = `
     process.env.CODEX_ROUTER_ENV_FILE = ${JSON.stringify(envFile)};
     process.env.CODEX_ROUTER_TOKEN = ${JSON.stringify('c'.repeat(64))};
-    const config = await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});
+    const config = await import(${JSON.stringify(moduleUrl('config.mjs'))});
     console.log(JSON.stringify(config.fileEnvironment));
   `;
   const { stdout } = await runChild(code);
@@ -790,22 +792,22 @@ test('config rejects invalid log levels, tokens, and provider orders', async () 
     CODEX_ROUTER_LOG_LEVEL: 'verbose',
     CODEX_ROUTER_PROVIDER_ORDER: '',
   };
-  await assert.rejects(runChild(`await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});`, base), /CODEX_ROUTER_LOG_LEVEL/);
+  await assert.rejects(runChild(`await import(${JSON.stringify(moduleUrl('config.mjs'))});`, base), /CODEX_ROUTER_LOG_LEVEL/);
 
-  await assert.rejects(runChild(`await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});`, {
+  await assert.rejects(runChild(`await import(${JSON.stringify(moduleUrl('config.mjs'))});`, {
     ...base, CODEX_ROUTER_LOG_LEVEL: 'error', CODEX_ROUTER_TOKEN: 'short',
   }), /CODEX_ROUTER_TOKEN/);
 
-  await assert.rejects(runChild(`await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});`, {
+  await assert.rejects(runChild(`await import(${JSON.stringify(moduleUrl('config.mjs'))});`, {
     ...base, CODEX_ROUTER_LOG_LEVEL: 'error', CODEX_ROUTER_PROVIDER_ORDER: 'bad entry without equals; ',
   }), /CODEX_ROUTER_PROVIDER_ORDER/);
 
-  await assert.rejects(runChild(`await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});`, {
+  await assert.rejects(runChild(`await import(${JSON.stringify(moduleUrl('config.mjs'))});`, {
     ...base, CODEX_ROUTER_LOG_LEVEL: 'error', CODEX_ROUTER_PROVIDER_ORDER: 'model=has space',
   }), /CODEX_ROUTER_PROVIDER_ORDER/);
 
   const good = await runChild(`
-    const config = await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});
+    const config = await import(${JSON.stringify(moduleUrl('config.mjs'))});
     console.log(JSON.stringify([...config.providerOrders.entries()]));
   `, { ...base, CODEX_ROUTER_LOG_LEVEL: 'error', CODEX_ROUTER_PROVIDER_ORDER: 'a/b=c,d; e/f=g' });
   assert.deepEqual(JSON.parse(good.stdout.trim().split('\n').at(-1)), [['a/b', ['c', 'd']], ['e/f', ['g']]]);
@@ -813,7 +815,7 @@ test('config rejects invalid log levels, tokens, and provider orders', async () 
 
 test('config ignores Anthropic sign-in tokens', async () => {
   const withSignIn = await runChild(`
-    const config = await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});
+    const config = await import(${JSON.stringify(moduleUrl('config.mjs'))});
     console.log(JSON.stringify(config.anthropicApiKey));
   `, {
     CODEX_ROUTER_ENV_FILE: join(routerHome, `missing-${uniqueId('env')}.env`),
@@ -825,7 +827,7 @@ test('config ignores Anthropic sign-in tokens', async () => {
   });
   assert.equal(withSignIn.stdout.trim().split('\n').at(-1), '""');
   const withKey = await runChild(`
-    const config = await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});
+    const config = await import(${JSON.stringify(moduleUrl('config.mjs'))});
     console.log(JSON.stringify(config.anthropicApiKey));
   `, {
     CODEX_ROUTER_ENV_FILE: join(routerHome, `missing-${uniqueId('env')}.env`),
@@ -1574,7 +1576,7 @@ test('web-search load drops expired results and prunes while running', async () 
   }));
   const code = `
     const { readFileSync } = await import('node:fs');
-    await import(${JSON.stringify(join(process.cwd(), 'router/web-search.mjs'))});
+    await import(${JSON.stringify(moduleUrl('web-search.mjs'))});
     console.log(readFileSync(${JSON.stringify(resultsFile)}, 'utf8'));
   `;
   const { stdout } = await runChild(code, {
@@ -1673,7 +1675,7 @@ test('web-search hourly maintenance prunes expired results', async () => {
       captured = fn;
       return originalSetInterval(() => {}, ms, ...rest);
     };
-    await import(${JSON.stringify(join(process.cwd(), 'router/web-search.mjs'))});
+    await import(${JSON.stringify(moduleUrl('web-search.mjs'))});
     globalThis.setInterval = originalSetInterval;
     if (!captured) throw new Error('interval not captured');
     captured();
@@ -1704,7 +1706,7 @@ test('config falls back to file values and defaults', async () => {
     'CODEX_ROUTER_REJECTED_REQUEST_DIR=/tmp',
   ].join('\n'));
   const code = `
-    const config = await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});
+    const config = await import(${JSON.stringify(moduleUrl('config.mjs'))});
     console.log(JSON.stringify({
       level: config.configuredLogLevel,
       openrouter: config.openrouterApiKey,
@@ -1735,7 +1737,7 @@ test('config falls back to file values and defaults', async () => {
 
 test('config provider orders reject empty provider lists', async () => {
   const home = mkdtempSync(join(tmpdir(), 'codex-router-cfg-empty-'));
-  await assert.rejects(runChild(`await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});`, {
+  await assert.rejects(runChild(`await import(${JSON.stringify(moduleUrl('config.mjs'))});`, {
     CODEX_ROUTER_ENV_FILE: join(home, 'missing.env'),
     CODEX_ROUTER_TOKEN: 'a'.repeat(64),
     CODEX_ROUTER_LOG_LEVEL: 'error',
@@ -1755,7 +1757,7 @@ test('sessions load failures forget state and log once', async () => {
   writeFileSync(join(home, 'claude-routes.json'), 'not json');
   writeFileSync(join(home, 'claude-efforts.json'), 'not json');
   const code = `
-    const sessions = await import(${JSON.stringify(join(process.cwd(), 'router/sessions.mjs'))});
+    const sessions = await import(${JSON.stringify(moduleUrl('sessions.mjs'))});
     console.log(JSON.stringify({
       side: sessions.sessionSide('x', 'openrouter', 'deepseek/x'),
       protected: sessions.protectedSession('missing'),
@@ -1857,7 +1859,7 @@ test('sessions load keeps current records and drops expired ones', async () => {
     'bad-effort': { efforts: [[0, 'bogus', 'zzz']], at: now },
   }));
   const code = `
-    const sessions = await import(${JSON.stringify(join(process.cwd(), 'router/sessions.mjs'))});
+    const sessions = await import(${JSON.stringify(moduleUrl('sessions.mjs'))});
     console.log(JSON.stringify({
       freshProtected: sessions.protectedSession('fresh-openai'),
       privateProtected: sessions.protectedSession('fresh-private'),
@@ -1891,7 +1893,7 @@ test('adapt strips hosted search on the Anthropic route without an OpenRouter ke
   const envFile = join(home, 'openrouter.env');
   writeFileSync(envFile, `CODEX_ROUTER_TOKEN=${'a'.repeat(64)}\n`);
   const code = `
-    const adapt = await import(${JSON.stringify(join(process.cwd(), 'router/adapt.mjs'))});
+    const adapt = await import(${JSON.stringify(moduleUrl('adapt.mjs'))});
     const request = { tools: [{ type: 'web_search' }, { type: 'function', name: 'other' }], input: [] };
     const adaptation = adapt.adaptForUpstream(request, 'anthropic', 'claude-sonnet-5-5', 'scope-nokey');
     console.log(JSON.stringify({ tools: request.tools, stateReset: adaptation.stateReset }));
@@ -2047,7 +2049,7 @@ test('anthropic refusals cover parsed null and missing error bodies', () => {
 test('config derives the router env file from the home directory when unset', async () => {
   const home = mkdtempSync(join(tmpdir(), 'codex-router-default-home-'));
   const code = `
-    const config = await import(${JSON.stringify(join(process.cwd(), 'router/config.mjs'))});
+    const config = await import(${JSON.stringify(moduleUrl('config.mjs'))});
     console.log(config.envFile);
   `;
   const { stdout } = await runChild(code, {
@@ -2258,7 +2260,7 @@ test('web-search ignores non-object stored files and saves hourly replay use', a
   writeFileSync(malformedEnv, `CODEX_ROUTER_TOKEN=${'a'.repeat(64)}\n`);
   writeFileSync(join(malformedHome, 'web-search-results.json'), '[]');
   const malformed = await runChild(`
-    const webSearch = await import(${JSON.stringify(join(process.cwd(), 'router/web-search.mjs'))});
+    const webSearch = await import(${JSON.stringify(moduleUrl('web-search.mjs'))});
     const restored = webSearch.overrideWebSearchForOpenRouter({
       tools: [], input: [{ type: 'web_search_call', id: 'missing', action: { query: 'q' } }],
     }, 'scope');
@@ -2289,7 +2291,7 @@ test('web-search ignores non-object stored files and saves hourly replay use', a
       captured = fn;
       return originalSetInterval(() => {}, ms, ...rest);
     };
-    const webSearch = await import(${JSON.stringify(join(process.cwd(), 'router/web-search.mjs'))});
+    const webSearch = await import(${JSON.stringify(moduleUrl('web-search.mjs'))});
     globalThis.setInterval = originalSetInterval;
     const request = { tools: [], input: [{ type: 'web_search_call', id: 'call-used', action: { query: 'q' } }] };
     const restored = webSearch.overrideWebSearchForOpenRouter(request, 'scope-used');

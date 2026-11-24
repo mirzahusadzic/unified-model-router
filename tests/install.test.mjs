@@ -264,7 +264,8 @@ test('install.mjs warns, without stopping, when Codex differs from the tested ve
   assert.match(result.stderr, /npm install -g @openai\/codex@0\.172\.0/);
 });
 
-test('install.mjs crosses the Windows command path and carries its flags', t => {
+test('install.mjs crosses the Windows command path and carries its flags',
+  { skip: windows ? 'Windows installs exercise this path without a platform spoof' : false }, t => {
   const directory = mkdtempSync(join(tmpdir(), 'router-install-win32-entry-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const home = join(directory, 'codex-home');
