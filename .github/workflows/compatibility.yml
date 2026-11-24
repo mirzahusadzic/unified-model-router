@@ -48,6 +48,7 @@ jobs:
         if: inputs.codex_versions != ''
         env:
           CODEX_CAPTURE_VERSIONS: ${{ inputs.codex_versions }}
+          CODEX_CAPTURE_STRICT: '1'
         run: node --test tests/integration/codex-capture.test.mjs
 
   lifecycle:

@@ -61,7 +61,7 @@ node --test --experimental-test-coverage \
 
 ### Live compatibility
 
-CI proves the router against synthetic upstreams; it never contacts real provider accounts. The compatibility workflow adds repeatable Codex-version capture, same-provider resume, provider-switch refusal, scratch installation, and ephemeral-router health. Run these checks by hand before any release that changes routing, installation, or the tested Codex version:
+CI proves the router against synthetic upstreams; it never contacts real provider accounts. The compatibility workflow adds repeatable Codex-version capture, same-provider resume, provider-switch refusal, scratch installation, and ephemeral-router health; its manual multi-version comparison fails on request-shape drift. Run these checks by hand before any release that changes routing, installation, or the tested Codex version:
 
 - **Services:** the scratch lifecycle installs with `--no-service`, starts the installed router on an ephemeral port, and verifies its own process. Separately, install and verify on each OS you ship with `node install.mjs` followed by `node install.mjs --verify`, and confirm the real service owns the process answering health.
 - **Providers:** smoke each upstream family with a small prompt on a non-training model: native OpenAI, OpenRouter, Claude on Anthropic's API with `ANTHROPIC_API_KEY`, and Claude on OpenRouter without it. Confirm the served-by report, usage accounting, refusals, and recovery.

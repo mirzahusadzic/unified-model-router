@@ -37,6 +37,9 @@ Captures, baselines, and version comparisons use environment knobs, all optional
 | `CODEX_CAPTURE_VERSIONS` | Two versions to compare, for example `0.171.0,0.172.0`, fetched as public `@openai/codex` packages through npx |
 | `CODEX_CAPTURE_STRICT` | `1` fails a version comparison on any difference; unset only reports it for review |
 
+The compatibility workflow sets `CODEX_CAPTURE_STRICT=1` for its manual
+multi-version comparison, so request-shape drift fails that job.
+
 The harness captures a fresh thread and a same-provider resume by explicit
 session ID, and asserts that Codex still refuses a provider switch. The exact
 native-to-router continuation cannot run on Codex 0.166 or later. Replaying
