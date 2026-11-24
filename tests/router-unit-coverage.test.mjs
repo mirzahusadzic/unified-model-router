@@ -1338,8 +1338,13 @@ test('web-search run reports failures without leaking queries', async t => {
     request.end = () => {};
     return request;
   });
-  assert.ok(citations.includes('https://example.com/a'));
-  assert.ok(!citations.includes('duplicate'));
+  assert.equal(citations, [
+    'Web search results for "test query":',
+    '',
+    '1. A',
+    '   https://example.com/a',
+    '   excerpt a',
+  ].join('\n'));
 
   const withEndpoints = await searchWithResponder((options, onResponse) => {
     assert.deepEqual(options.headers?.authorization, 'Bearer test-openrouter-key');
