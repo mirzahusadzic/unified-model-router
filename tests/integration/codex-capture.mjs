@@ -145,9 +145,17 @@ export async function captureFreshThread({ env, work, baseUrl, model, prompt, co
 }
 
 export function sessionIdFromOutput(result) {
-  const sessionId = result.stderr?.match(/^session id: (\S+)$/m)?.[1];
-  if (!sessionId) throw new Error('Codex did not report the session ID for the capture');
-  return sessionId;
+  for (const line of String(result.stdout ?? '').split(/\r?\n/)) {
+    if (!line.trim().startsWith('{')) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event?.type === 'thread.started' && typeof event.thread_id === 'string') return event.thread_id;
+    } catch {}
+  }
+  const fallback = result.stderr?.match(/^session id: (\S+)$/m)?.[1];
+  if (fallback) return fallback;
+  throw new Error(`Codex did not report the session ID for the capture (status ${result.status ?? 'unknown'})`
+    + `\nstdout: ${String(result.stdout ?? '').slice(-1000)}\nstderr: ${String(result.stderr ?? '').slice(-1000)}`);
 }
 
 // A persisted router thread proves the request history stays append-only. The
@@ -157,7 +165,7 @@ export async function capturePersistentThread({ env, work, baseUrl, model, promp
   if (!new URL(baseUrl).hostname.endsWith('127.0.0.1')) throw new Error('Capture base URL must stay on loopback');
   const common = ['--skip-git-repo-check', '-c', `model_providers.unified.base_url=${baseUrl}`, '-m', model];
   const first = await runTracked(command,
-    [...prefixArgs, 'exec', ...common, prompt],
+    [...prefixArgs, 'exec', '--json', ...common, prompt],
     { env, cwd: work, shell: windows && command === 'codex' });
   if (first.status !== 0) throw new Error(`${model}: first codex exec failed: ${first.stderr.slice(-2000)}`);
   const sessionId = sessionIdFromOutput(first);

@@ -18,6 +18,7 @@ import {
   probeCrossProviderResume,
   resolveCodexRunner,
   sanitizeModel,
+  sessionIdFromOutput,
   offlineEnv,
   stableStringify,
   startCaptureServer,
@@ -166,4 +167,15 @@ test('the capture environment strips credentials and the diff is readable', () =
   assert.ok(diff.some(line => line.includes('added tool: b')), diff.join('\n'));
   assert.ok(diff.some(line => line.includes('removed tool: a')), diff.join('\n'));
   assert.ok(diff.some(line => line.includes('request bytes')), diff.join('\n'));
+});
+
+test('session IDs use structured Codex output with a human fallback', () => {
+  assert.equal(sessionIdFromOutput({
+    status: 0,
+    stdout: '{"type":"thread.started","thread_id":"structured-id"}\n',
+    stderr: '',
+  }), 'structured-id');
+  assert.equal(sessionIdFromOutput({ status: 0, stdout: '', stderr: 'session id: legacy-id\n' }), 'legacy-id');
+  assert.throws(() => sessionIdFromOutput({ status: 1, stdout: '', stderr: 'boom' }),
+    /status 1[\s\S]*boom/);
 });
