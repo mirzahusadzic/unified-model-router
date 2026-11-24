@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { catalogFiles } from './catalog-files.mjs';
 import { applyOpenRouterPrompts, readPrompts, suffixField, usesOpenRouterPrompts } from './openrouter-prompts.mjs';
+import { repositoryRoot } from './repository-root.mjs';
 
 // Check a generated or installed Codex catalog against this checkout: every
 // router entry must be present with the repository's context limits and
@@ -38,7 +38,7 @@ if (report) {
   process.exit(0);
 }
 
-const root = fileURLToPath(new URL('../', import.meta.url));
+const root = repositoryRoot();
 const prompts = readPrompts(join(root, 'prompts', 'openrouter-instructions.md'),
   join(root, 'prompts', 'openrouter-persistent.md'));
 const bySlug = new Map(installed.map(model => [model.slug, model]));
