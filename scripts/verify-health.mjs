@@ -51,12 +51,25 @@ async function fetchHealth(endpoint) {
 }
 
 const health = JSON.parse(endpoint ? await fetchHealth(endpoint) : readFileSync(0, 'utf8'));
+const capabilities = health?.capabilities;
+const includesAll = (value, required) => Array.isArray(value) && required.every(item => value.includes(item));
 if (!health || !['ok', 'openai', 'openrouter', 'clientAuth'].every(key => health[key] === true)
-    || !Array.isArray(health.capabilities?.routingPolicies)
-    || !health.capabilities.routingPolicies.includes('preserve-model-v1')
-    || health.capabilities.openrouterRejectionRecovery !== 'completed-diagnostic-v1'
-    || health.capabilities.providerIsolation !== 'session-v3'
-    || health.capabilities.revisionPrecondition !== true || health.revision !== revision) {
+    || !Array.isArray(capabilities?.routingPolicies)
+    || !capabilities.routingPolicies.includes('preserve-model-v1')
+    || capabilities.openrouterRejectionRecovery !== 'completed-diagnostic-v1'
+    || capabilities.providerIsolation !== 'session-v3'
+    || capabilities.revisionPrecondition !== true
+    || !includesAll(capabilities.promptCacheModes, ['instructions', 'none'])
+    || !includesAll(capabilities.dataPolicies, ['deny'])
+    || !includesAll(capabilities.reports, ['provider'])
+    || capabilities.generationLookup !== true
+    || capabilities.endpointPins !== true
+    || !includesAll(capabilities.fallbackPolicies, ['none'])
+    || capabilities.thinkingBudgets !== true
+    || capabilities.thinkingOff?.effort !== 'none'
+    || !includesAll(capabilities.thinkingOff?.models, ['anthropic/claude-sonnet-5-5'])
+    || !includesAll(capabilities.trainingDeclarations, ['declared-training', 'endpoint', 'provider-terms', 'unknown'])
+    || capabilities.modelTraining !== 'training-v1' || health.revision !== revision) {
   throw new Error('Router health, required capabilities or installed source revision do not match; update and restart the router');
 }
 if (servicePidOption !== undefined) {
