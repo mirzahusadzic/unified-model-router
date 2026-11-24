@@ -7,6 +7,17 @@ import { anthropicHeaders, anthropicResponse, messagesRequest } from './anthropi
 import { contextOverflowPattern, isObject, maxEventLineChars } from './common.mjs';
 import { anthropicApiKey, configuredLogLevel, logLevels, openrouterApiKey } from './config.mjs';
 
+// Test seam for missing-key branches: tests may set an override to simulate a
+// missing key without restarting the process. Production calls omit overrides
+// and use the configured keys, so wire behavior is unchanged.
+export const testKeyOverrides = {};
+export function effectiveAnthropicKey() {
+  return testKeyOverrides.anthropicApiKey !== undefined ? testKeyOverrides.anthropicApiKey : anthropicApiKey;
+}
+export function effectiveOpenrouterKey() {
+  return testKeyOverrides.openrouterApiKey !== undefined ? testKeyOverrides.openrouterApiKey : openrouterApiKey;
+}
+
 export const contextOverflowMessage = 'The conversation exceeds the model context window.';
 
 const maxCapturedUpstreamErrorBytes = 256 * 1024;
@@ -68,14 +79,16 @@ export function upstreamTrace(headers) {
   };
 }
 
-export function upstreamHeaders(requestHeaders, provider, bodyLength) {
+export function upstreamHeaders(requestHeaders, provider, bodyLength, keys = null) {
+  const anthropicKey = keys?.anthropicApiKey ?? effectiveAnthropicKey();
+  const openrouterKey = keys?.openrouterApiKey ?? effectiveOpenrouterKey();
   if (provider === 'anthropic') {
-    if (!anthropicApiKey) {
+    if (!anthropicKey) {
       const error = new Error('ANTHROPIC_API_KEY is not configured for the Unified Model Router');
       error.statusCode = 503;
       throw error;
     }
-    return anthropicHeaders(anthropicApiKey, bodyLength);
+    return anthropicHeaders(anthropicKey, bodyLength);
   }
   const allowed = ['accept', 'user-agent'];
   if (provider === 'openai') {
@@ -94,12 +107,12 @@ export function upstreamHeaders(requestHeaders, provider, bodyLength) {
   headers['content-type'] = 'application/json';
 
   if (provider === 'openrouter') {
-    if (!openrouterApiKey) {
+    if (!openrouterKey) {
       const error = new Error('OPENROUTER_API_KEY is not configured for the Unified Model Router');
       error.statusCode = 503;
       throw error;
     }
-    headers.authorization = `Bearer ${openrouterApiKey}`;
+    headers.authorization = `Bearer ${openrouterKey}`;
   } else if (!headers.authorization) {
     const error = new Error('The OpenAI request did not include Codex authentication');
     error.statusCode = 401;
@@ -220,7 +233,7 @@ function tokenCounts(usage) {
   return Object.keys(counts).length > 0 ? counts : null;
 }
 
-export function usageTap(onUsage) {
+export function usageTap(onUsage, lineLimit = maxEventLineChars) {
   const decoder = new StringDecoder('utf8');
   let line = '';
   let overflow = false;
@@ -242,7 +255,7 @@ export function usageTap(onUsage) {
       const end = text.indexOf('\n', start);
       if (!overflow) {
         line += end === -1 ? text.slice(start) : text.slice(start, end);
-        if (line.length > maxEventLineChars) {
+        if (line.length > lineLimit) {
           overflow = true;
           line = '';
         }

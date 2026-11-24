@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import fs, { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -85,11 +85,12 @@ after(() => {
   rmSync(routerHome, { recursive: true, force: true });
 });
 
-async function exchangeRaw(rawBody, headers = {}, { method = 'POST', url = '/v1/responses' } = {}) {
+async function exchangeRaw(rawBody, headers = {}, { method = 'POST', url = '/v1/responses', socket, recordStatus = true } = {}) {
   const request = new PassThrough();
   Object.assign(request, {
     method,
     url,
+    ...(socket ? { socket } : {}),
     headers: {
       ...clientHeaders,
       'content-length': '1',
@@ -100,7 +101,7 @@ async function exchangeRaw(rawBody, headers = {}, { method = 'POST', url = '/v1/
   response.headersSent = false;
   response.responseHeaders = {};
   response.writeHead = (status, responseHeaders = {}) => {
-    response.statusCode = status;
+    if (recordStatus) response.statusCode = status;
     response.responseHeaders = responseHeaders;
     response.headersSent = true;
   };
@@ -3697,4 +3698,1125 @@ test('a refusal that moves a thinking-off request to OpenRouter sends its effort
   assert.equal(Object.hasOwn(fallback.body, 'thinking'), false);
   assert.equal(final.response.route, 'openrouter');
   assert.equal(Object.hasOwn(final.response, 'thinking'), false);
+});
+
+// Coverage for router/upstream.mjs and router/unified-router.mjs uncovered paths.
+test('upstreamHeaders reports missing keys and missing Codex auth without leaking values', async () => {
+  const { upstreamHeaders, testKeyOverrides } = await import('../router/upstream.mjs');
+  // Direct overrides, without touching the process environment.
+  assert.throws(() => upstreamHeaders({}, 'anthropic', 10, { anthropicApiKey: '', openrouterApiKey: 'k' }),
+    error => error.statusCode === 503 && /ANTHROPIC_API_KEY/.test(error.message));
+  assert.throws(() => upstreamHeaders({}, 'openrouter', 10, { anthropicApiKey: 'k', openrouterApiKey: '' }),
+    error => error.statusCode === 503 && /OPENROUTER_API_KEY/.test(error.message));
+  assert.throws(() => upstreamHeaders({}, 'openai', 10, { anthropicApiKey: 'k', openrouterApiKey: 'k' }),
+    error => error.statusCode === 401 && /Codex authentication/.test(error.message));
+  // Effective keys default to the configured test keys.
+  assert.equal(upstreamHeaders({ authorization: 'Bearer x' }, 'openai', 2).authorization, 'Bearer x');
+  assert.match(upstreamHeaders({}, 'openrouter', 2).authorization, /^Bearer test-openrouter-key$/);
+  // Global overrides simulate a missing key for the router's own calls.
+  testKeyOverrides.openrouterApiKey = '';
+  try {
+    assert.throws(() => upstreamHeaders({}, 'openrouter', 2),
+      error => error.statusCode === 503);
+  } finally {
+    delete testKeyOverrides.openrouterApiKey;
+  }
+  testKeyOverrides.anthropicApiKey = '';
+  try {
+    assert.throws(() => upstreamHeaders({}, 'anthropic', 2),
+      error => error.statusCode === 503);
+  } finally {
+    delete testKeyOverrides.anthropicApiKey;
+  }
+});
+
+test('upstream routing helpers keep their contracts on odd inputs', async () => {
+  const { routeFor, upstreamModelFor, upstreamTrace, parseUpstreamError } = await import('../router/upstream.mjs');
+  assert.equal(routeFor(null).provider, 'openai');
+  assert.equal(routeFor(undefined).provider, 'openai');
+  assert.equal(routeFor('gpt-6-astra').provider, 'openai');
+  assert.equal(routeFor('anthropic/claude-sonnet-5-5').provider, 'anthropic');
+  assert.equal(routeFor('deepseek/x').provider, 'openrouter');
+  assert.equal(upstreamModelFor(null, 'openrouter'), null);
+  assert.equal(upstreamModelFor('anthropic/claude-x', 'anthropic'), 'claude-x');
+  assert.equal(upstreamModelFor('gpt-6-astra', 'openai'), 'gpt-6-astra');
+  assert.equal(upstreamModelFor('anthropic/claude-sonnet-5-5', 'openrouter'), 'anthropic/claude-sonnet-5.5');
+  assert.equal(upstreamModelFor('openrouter/vendor/model', 'openrouter'), 'vendor/model');
+  assert.equal(upstreamModelFor('ultra-spark/deepseek-v4.1-flash-1017', 'openrouter'), 'deepseek/deepseek-v4.1-flash-1017');
+  assert.equal(upstreamModelFor('ultra-spark-private/deepseek-v4.1-flash-1017', 'openrouter'), 'deepseek/deepseek-v4.1-flash-1017');
+  assert.equal(upstreamModelFor('deepseek/deepseek-v4.1-flash-1017', 'openrouter'), 'deepseek/deepseek-v4.1-flash-1017');
+  assert.deepEqual(upstreamTrace(null), { generationId: null, providerName: null, upstreamRequestId: null, cloudflareRayId: null });
+  assert.deepEqual(upstreamTrace({}), { generationId: null, providerName: null, upstreamRequestId: null, cloudflareRayId: null });
+  assert.equal(upstreamTrace({ 'x-request-id': 'a', 'request-id': 'b' }).upstreamRequestId, 'a');
+  assert.equal(upstreamTrace({ 'request-id': 'b' }).upstreamRequestId, 'b');
+  assert.equal(upstreamTrace({ 'x-generation-id': 7 }).generationId, null);
+  assert.equal(upstreamTrace({ 'x-generation-id': 'x'.repeat(300) }).generationId, null);
+  assert.equal(upstreamTrace({ 'x-generation-id': 'gen_ok' }).generationId, 'gen_ok');
+  assert.deepEqual(parseUpstreamError(Buffer.from('not json')), { errorCode: null, errorType: null, contextOverflow: false });
+  assert.equal(parseUpstreamError(Buffer.from(JSON.stringify({ error: { code: 'context_length_exceeded' } }))).contextOverflow, true);
+  assert.equal(parseUpstreamError(Buffer.from(JSON.stringify({ error_type: 'context_length_exceeded' }))).contextOverflow, true);
+  assert.equal(parseUpstreamError(Buffer.from(JSON.stringify({ error: { message: 'prompt is too long, maximum context reached' } }))).contextOverflow, true);
+  assert.equal(parseUpstreamError(Buffer.from(JSON.stringify({ error: { message: 'other', code: 400 } }))).contextOverflow, false);
+  assert.equal(parseUpstreamError(Buffer.from(JSON.stringify({ error: { code: 400, type: 'invalid', message: 'bad' } }))).errorType, 'invalid');
+});
+
+test('readUpstreamBody settles once across data, errors, aborts, and closes', async () => {
+  const { readUpstreamBody } = await import('../router/upstream.mjs');
+  const { PassThrough } = await import('node:stream');
+  // Normal end.
+  {
+    const stream = PassThrough();
+    const pending = readUpstreamBody(stream);
+    stream.end('hello');
+    const { body, bytes, truncated } = await pending;
+    assert.equal(body.toString(), 'hello');
+    assert.equal(bytes, 5);
+    assert.equal(truncated, false);
+  }
+  // Error wins.
+  {
+    const stream = new PassThrough();
+    const pending = readUpstreamBody(stream);
+    stream.destroy(new Error('boom'));
+    await assert.rejects(pending, /boom/);
+  }
+  // Abort is reported, and a later end does not settle twice.
+  {
+    const stream = new PassThrough();
+    const pending = readUpstreamBody(stream);
+    stream.emit('aborted');
+    stream.emit('end');
+    await assert.rejects(pending, /aborted/);
+  }
+  // Close before end is reported.
+  {
+    const stream = new PassThrough();
+    const pending = readUpstreamBody(stream);
+    stream.emit('close');
+    await assert.rejects(pending, /closed before it ended/);
+  }
+  // Truncation resolves once; later events are ignored.
+  {
+    const stream = new PassThrough();
+    const pending = readUpstreamBody(stream, 4);
+    stream.write('123456');
+    const first = await pending;
+    assert.equal(first.truncated, true);
+    assert.equal(first.bytes, 4);
+    stream.emit('error', new Error('late'));
+    stream.emit('end');
+    const second = await pending;
+    assert.equal(second.truncated, true);
+  }
+});
+
+test('usageTap ignores malformed final events and honors a small line bound', async () => {
+  const { usageTap } = await import('../router/upstream.mjs');
+  const { PassThrough } = await import('node:stream');
+  const collect = tap => new Promise((resolve, reject) => {
+    const chunks = [];
+    tap.on('data', chunk => chunks.push(chunk));
+    tap.on('end', () => resolve(Buffer.concat(chunks).toString()));
+    tap.on('error', reject);
+  });
+  // A line that names a final event but is not JSON leaves nothing to log and passes through.
+  {
+    let calls = 0;
+    const tap = usageTap(() => { calls += 1; });
+    const body = 'data: {"type":"response.completed",\n\ndata: {"type":"response.completed","response":{"id":"r","status":"completed","usage":{"input_tokens":1}}}\n\n';
+    tap.end(body);
+    assert.equal(await collect(tap), body);
+    // The malformed line is ignored; the well-formed one logs once. Count via fresh tap below.
+  }
+  {
+    let seen = null;
+    const tap = usageTap(value => { seen = value; });
+    const good = 'data: {"type":"response.completed","response":{"id":"r","status":"completed","usage":{"input_tokens":2}}}\n\n';
+    tap.end(good);
+    assert.equal(await collect(tap), good);
+    assert.deepEqual(seen, { responseStatus: 'completed', usage: { input_tokens: 2 } });
+  }
+  // A final event without numeric usage logs nothing.
+  {
+    let calls = 0;
+    const tap = usageTap(() => { calls += 1; });
+    const body = 'data: {"type":"response.completed","response":{"id":"r","status":"completed","usage":{"note":"x"}}}\n\n';
+    tap.end(body);
+    assert.equal(await collect(tap), body);
+    assert.equal(calls, 0);
+  }
+  // A non-final type that mentions a final type in text is not usage.
+  {
+    let calls = 0;
+    const tap = usageTap(() => { calls += 1; });
+    const body = 'data: {"type":"response.output_text.delta","delta":"\\"type\\":\\"response.completed\\""}\n\n';
+    tap.end(body);
+    assert.equal(await collect(tap), body);
+    assert.equal(calls, 0);
+  }
+  // With a small bound, an overlong line overflows and the next final event still logs.
+  {
+    let seen = null;
+    const tap = usageTap(value => { seen = value; }, 120);
+    const longLine = 'data: ' + 'x'.repeat(200) + '\n\n';
+    const good = 'data: {"type":"response.failed","response":{"id":"r","status":"failed","usage":{"input_tokens":3}}}\n\n';
+    const body = longLine + good;
+    tap.end(body);
+    assert.equal(await collect(tap), body);
+    assert.deepEqual(seen, { responseStatus: 'failed', usage: { input_tokens: 3 } });
+  }
+  // Split multibyte characters survive the tap.
+  {
+    let seen = null;
+    const tap = usageTap(value => { seen = value; });
+    const event = { type: 'response.completed', response: { id: 'r', status: 'completed', usage: { input_tokens: 1 } } };
+    const text = 'data: ' + JSON.stringify(event) + '\n\nGrüße\n\n';
+    const buf = Buffer.from(text);
+    const cut = buf.indexOf(Buffer.from('ü'));
+    tap.write(buf.subarray(0, cut));
+    tap.end(buf.subarray(cut));
+    await collect(tap);
+    assert.deepEqual(seen, { responseStatus: 'completed', usage: { input_tokens: 1 } });
+  }
+  // The event type is authoritative even when quoted text elsewhere on the line
+  // matches, and a final event without a status keeps a null status.
+  {
+    const seen = [];
+    const tap = usageTap(value => seen.push(value));
+    const quoted = 'data: {"type":"message","meta":{"type":"response.completed"}}\n\n';
+    const noStatus = 'data: {"type":"response.completed","response":{"usage":{"input_tokens":7}}}\n\n';
+    tap.end(quoted + noStatus);
+    assert.equal(await collect(tap), quoted + noStatus);
+    assert.deepEqual(seen, [{ responseStatus: null, usage: { input_tokens: 7 } }]);
+  }
+});
+
+test('openUpstream calls Anthropic logging through its default logger', async () => {
+  const { openUpstream } = await import('../router/upstream.mjs');
+  const body = Buffer.from(JSON.stringify({ model: 'claude-sonnet-5-5', input: 'Hello' }));
+  const upstreamResponse = Readable.from([anthropicSse([
+    { type: 'message_start', message: { id: 'msg_default_log', model: 'claude-sonnet-5-5', usage: { input_tokens: 1 } } },
+    { type: 'message_stop' },
+  ])]);
+  upstreamResponse.statusCode = 200;
+  upstreamResponse.headers = { 'content-type': 'text/event-stream' };
+  const target = {
+    provider: 'anthropic', hostname: 'api.anthropic.com', path: '/v1/messages',
+    protocol: { request(_options, onResponse) {
+      return { on() {}, end() { onResponse(upstreamResponse); } };
+    } },
+  };
+  const response = await new Promise(resolve => openUpstream({
+    target, headers: {}, body, onError: () => {},
+  }, resolve));
+  const chunks = [];
+  for await (const chunk of response) chunks.push(Buffer.from(chunk));
+  assert.match(Buffer.concat(chunks).toString(), /response\.completed/);
+});
+
+test('a malformed final event in an upstream stream passes through without usage', async t => {
+  mockUpstreamSequence(t, [{ status: 200, contentType: 'text/event-stream',
+    body: 'data: {"type":"response.completed",\n\ndata: {"type":"response.completed","response":{"id":"resp_mal","status":"completed","usage":{"input_tokens":5}}}\n\n' }]);
+  const logsBefore = parsedLogEntries().length;
+  const result = await exchangeRaw(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello' }));
+  assert.equal(result.status, 200);
+  assert.match(result.rawBody, /response\.completed/);
+  const usage = parsedLogEntries().slice(logsBefore).filter(entry => entry.event === 'upstream.usage');
+  assert.equal(usage.length, 1);
+  assert.deepEqual(usage[0].usage, { input_tokens: 5 });
+});
+
+test('sendJson honors an already-sent response', async () => {
+  const { sendJson } = await import('../router/unified-router.mjs');
+  let ended = 0;
+  let wrote = 0;
+  const sent = { headersSent: true, end() { ended += 1; }, writeHead() { wrote += 1; } };
+  sendJson(sent, 500, { error: { message: 'x' } });
+  assert.equal(ended, 1);
+  assert.equal(wrote, 0);
+  let status = null;
+  let body = null;
+  const fresh = { headersSent: false, writeHead(s) { status = s; this.headersSent = true; }, end(v) { body = v; } };
+  sendJson(fresh, 400, { error: { message: 'bad' } });
+  assert.equal(status, 400);
+  assert.deepEqual(JSON.parse(body), { error: { message: 'bad' } });
+});
+
+test('captureRejectedRequest refuses non-private directories and reports write failures', async t => {
+  const { captureRejectedRequest } = await import('../router/unified-router.mjs');
+  const logs = [];
+  t.mock.method(console, 'error', line => logs.push(String(line)));
+  // A subdirectory of the router directory is not the directory itself on Windows.
+  const refused = captureRejectedRequest({ requestId: 'req-test', attempt: 1, requestBody: Buffer.from('{}'), responseBody: Buffer.from('{}') },
+    { directory: join(routerHome, 'rejections'), routerDirectory: routerHome, platform: 'win32' });
+  assert.equal(refused, null);
+  assert.match(logs.at(-1), /"event":"openrouter\.rejection_capture_refused"/);
+  // No directory means no capture.
+  assert.equal(captureRejectedRequest({ requestId: 'x', attempt: 1, requestBody: Buffer.from('{}'), responseBody: Buffer.from('{}') },
+    { directory: '', routerDirectory: routerHome, platform: 'linux' }), null);
+  // A write failure is logged and returns null.
+  const failingDir = join(routerHome, 'capture-fails');
+  writeFileSync(failingDir, 'file, not a directory');
+  try {
+    const failed = captureRejectedRequest({ requestId: 'req-fail', attempt: 1, requestBody: Buffer.from('{}'), responseBody: Buffer.from('{}') },
+      { directory: join(failingDir, 'child'), routerDirectory: join(failingDir, 'child'), platform: 'linux' });
+    assert.equal(failed, null);
+    assert.match(logs.at(-1), /"event":"openrouter\.rejection_capture_failed"/);
+  } finally {
+    fs.rmSync(failingDir, { force: true });
+  }
+  // The configured directory still captures.
+  const ok = captureRejectedRequest({ requestId: 'req-ok', attempt: 9, requestBody: Buffer.from('{"a":1}'), responseBody: Buffer.from('{"b":2}') });
+  assert.match(ok, /^req-ok-attempt-9$/);
+  fs.rmSync(join(rejectedRequestDir, ok + '.request.json'), { force: true });
+  fs.rmSync(join(rejectedRequestDir, ok + '.response.json'), { force: true });
+  // A filesystem error without a code is logged as a null code.
+  const mkdir = fs.mkdirSync;
+  fs.mkdirSync = () => { throw new Error('no code'); };
+  syncBuiltinESMExports();
+  try {
+    const uncodedBefore = logs.length;
+    assert.equal(captureRejectedRequest({ requestId: 'req-uncoded', attempt: 1, requestBody: Buffer.from('{}'), responseBody: Buffer.from('{}') },
+      { directory: routerHome, routerDirectory: routerHome, platform: 'linux' }), null);
+    const uncoded = logs.slice(uncodedBefore).map(line => JSON.parse(line)).find(entry => entry.event === 'openrouter.rejection_capture_failed');
+    assert.equal(uncoded.errorCode, null);
+  } finally {
+    fs.mkdirSync = mkdir;
+    syncBuiltinESMExports();
+  }
+});
+
+test('request framing uses a supplied socket port and tolerates a missing response status', async () => {
+  const socketHealth = await exchangeRaw('', { host: '127.0.0.1:18888' },
+    { method: 'GET', url: '/health', socket: { localPort: 18888 } });
+  assert.equal(socketHealth.status, 200);
+  assert.equal(JSON.parse(socketHealth.rawBody).ok, true);
+
+  const noStatus = await exchangeRaw('', {}, { method: 'GET', url: '/health', recordStatus: false });
+  assert.equal(noStatus.status, undefined);
+  assert.equal(JSON.parse(noStatus.rawBody).ok, true);
+
+  const noUrl = await exchangeRaw('', {}, { method: 'GET', url: null });
+  assert.equal(noUrl.status, 404);
+  assert.match(JSON.parse(noUrl.rawBody).error.message, /GET null/);
+});
+
+test('a request stream error destroys the downstream response and excess chunks are ignored', async () => {
+  const erroredRequest = new PassThrough();
+  Object.assign(erroredRequest, { method: 'POST', url: '/v1/responses', headers: { ...clientHeaders } });
+  const erroredResponse = new PassThrough();
+  erroredResponse.writeHead = () => { erroredResponse.headersSent = true; };
+  erroredResponse.resume();
+  const requestClosed = once(erroredResponse, 'close');
+  handleRequest(erroredRequest, erroredResponse);
+  erroredRequest.emit('error', new Error('client stream failed'));
+  await requestClosed;
+  assert.equal(erroredResponse.destroyed, true);
+
+  const oversized = new EventEmitter();
+  Object.assign(oversized, {
+    method: 'POST', url: '/v1/responses', headers: { ...clientHeaders },
+    destroyed: false, destroy() { oversized.destroyed = true; },
+  });
+  const oversizedResponse = new PassThrough();
+  oversizedResponse.writeHead = status => {
+    oversizedResponse.statusCode = status;
+    oversizedResponse.headersSent = true;
+  };
+  oversizedResponse.resume();
+  handleRequest(oversized, oversizedResponse);
+  oversized.emit('data', Buffer.alloc(64 * 1024 * 1024 + 1));
+  oversized.emit('data', Buffer.from('ignored after the limit'));
+  await once(oversizedResponse, 'finish');
+  assert.equal(oversizedResponse.statusCode, 200);
+  assert.equal(oversized.destroyed, true);
+});
+
+test('a failing generation lookup returns 502 rather than an unhandled rejection', async t => {
+  mockUpstreamSequence(t, [{
+    status: 200, contentType: 'text/event-stream', body: finalEventFor('gen-lookup-failure'),
+  }]);
+  await exchangeRaw(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello', stream: true }),
+    { 'x-codex-router-report': 'provider' });
+
+  const originalNow = Date.now;
+  Date.now = function failingLookupClock() {
+    if (new Error().stack.includes('generationReport')) throw new Error('lookup clock failed');
+    return originalNow();
+  };
+  try {
+    const lookup = await exchange('', {}, { method: 'GET', url: '/v1/generations/gen-lookup-failure' });
+    assert.equal(lookup.status, 502);
+    assert.equal(lookup.body.error.message, 'The generation lookup failed');
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test('a rejection capture failure still completes with a diagnostic', async t => {
+  const original = fs.writeFileSync;
+  fs.writeFileSync = () => { const error = new Error('disk full'); error.code = 'ENOSPC'; throw error; };
+  syncBuiltinESMExports();
+  try {
+    mockUpstreamSequence(t, [{ status: 400, body: JSON.stringify({ error: { message: 'bad', code: 400 } }) },
+      { status: 400, body: JSON.stringify({ error: { message: 'bad', code: 400 } }) }]);
+    const logsBefore = parsedLogEntries().length;
+    const result = await exchangeRaw(JSON.stringify({ model: 'openrouter/vendor/model', input: recoveryHistory }));
+    assert.equal(result.status, 200);
+    assert.equal(result.headers['x-codex-router-diagnostic'], 'openrouter-request-rejected');
+    assert.ok(parsedLogEntries().slice(logsBefore).some(entry => entry.event === 'openrouter.rejection_capture_failed'));
+  } finally {
+    fs.writeFileSync = original;
+    syncBuiltinESMExports();
+  }
+});
+
+test('the model list is empty when the catalog cannot be read', async () => {
+  const backup = readFileSync(modelCatalog, 'utf8');
+  try {
+    writeFileSync(modelCatalog, '{invalid');
+    assert.deepEqual((await exchange('', {}, { method: 'GET', url: '/v1/models' })).body, { object: 'list', data: [] });
+    fs.rmSync(modelCatalog);
+    assert.deepEqual((await exchange('', {}, { method: 'GET', url: '/models' })).body, { object: 'list', data: [] });
+  } finally {
+    writeFileSync(modelCatalog, backup);
+  }
+});
+
+test('unknown routes return 404 without forwarding', async () => {
+  const count = forwarded.length;
+  for (const options of [{ method: 'GET', url: '/unknown' }, { method: 'POST', url: '/v1/unknown' }, { method: 'DELETE', url: '/v1/responses' }]) {
+    const result = await exchange('{}', {}, options);
+    assert.equal(result.status, 404);
+    assert.match(result.body.error.message, /Unsupported route/);
+  }
+  assert.equal(forwarded.length, count);
+});
+
+test('a Claude request without an Anthropic key ends in 503, or 502 when pinned, never 400', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 12 * 60 * 60 * 1000 });
+  const { testKeyOverrides } = await import('../router/upstream.mjs');
+  testKeyOverrides.anthropicApiKey = '';
+  try {
+    const count = forwarded.length;
+    const missing = await exchange(claudeRequest('Hello'), inClaudeSession('no-anthropic-key'));
+    assert.equal(missing.status, 503);
+    assert.match(missing.body.error.message, /ANTHROPIC_API_KEY/);
+    assert.equal(forwarded.length, count);
+    const pinned = await exchange(claudeRequest('Hello'), { ...inClaudeSession('no-anthropic-key-pinned'), 'x-codex-router-fallback': 'none' });
+    assert.equal(pinned.status, 502);
+    assert.equal(pinned.body.error.code, 'anthropic_refused');
+    assert.equal(pinned.body.error.reason, 'no_api_key');
+    assert.equal(forwarded.length, count);
+  } finally {
+    delete testKeyOverrides.anthropicApiKey;
+  }
+});
+
+test('an OpenRouter request without a key ends in 503, and native auth stays required', async () => {
+  const { testKeyOverrides } = await import('../router/upstream.mjs');
+  testKeyOverrides.openrouterApiKey = '';
+  try {
+    const count = forwarded.length;
+    const missing = await exchange(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello' }));
+    assert.equal(missing.status, 503);
+    assert.match(missing.body.error.message, /OPENROUTER_API_KEY/);
+    assert.equal(forwarded.length, count);
+  } finally {
+    delete testKeyOverrides.openrouterApiKey;
+  }
+  const count = forwarded.length;
+  const native = await exchange(JSON.stringify({ model: 'gpt-6-astra', input: 'Hello' }), { authorization: undefined });
+  assert.equal(native.status, 401);
+  assert.match(native.body.error.message, /Codex authentication/);
+  assert.equal(forwarded.length, count);
+});
+
+test('an unencodable request returns 400 without forwarding', async t => {
+  const count = forwarded.length;
+  const original = JSON.stringify;
+  const marker = 'TRIGGER_ENCODE_FAILURE_1793';
+  const rawBody = original({ model: 'gpt-6-astra', input: 'Hello', markerForEncodeFailure: marker });
+  t.mock.method(JSON, 'stringify', (value, ...rest) => {
+    if (value && typeof value === 'object' && value.markerForEncodeFailure === marker) throw new Error('mock circular');
+    return original(value, ...rest);
+  });
+  try {
+    const result = await exchange(rawBody);
+    assert.equal(result.status, 400);
+    assert.match(result.body.error.message, /Unable to encode request/);
+    assert.equal(forwarded.length, count);
+  } finally {
+    t.mock.restoreAll();
+    mock.method(console, 'log', line => logEntries.push(String(line)));
+    mock.method(console, 'error', line => logEntries.push(String(line)));
+    mock.method(http, 'createServer', handler => {
+      handleRequest = handler;
+      return { on() {}, listen: (_port, _host, ready) => ready() };
+    });
+    // Re-establish the default https mock used by other tests.
+    mock.method(https, 'request', (options, onResponse) => {
+      const chunks = [];
+      return new Writable({
+        write(chunk, _encoding, callback) { chunks.push(chunk); callback(); },
+        final(callback) {
+          const rawBody = Buffer.concat(chunks);
+          const body = JSON.parse(rawBody.toString('utf8'));
+          forwarded.push({ ...options, body, byteLength: rawBody.length });
+          const payload = { id: 'resp_test', output: [] };
+          const response = Readable.from([JSON.stringify(payload)]);
+          response.statusCode = 200;
+          response.headers = { 'content-type': 'application/json' };
+          queueMicrotask(() => onResponse(response));
+          callback();
+        },
+      });
+    });
+  }
+});
+
+test('an upstream response after the client destroyed the request is discarded', async t => {
+  const upstream = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+  const upstreamResponse = new PassThrough();
+  upstreamResponse.statusCode = 200;
+  upstreamResponse.headers = { 'content-type': 'application/json' };
+  let deliver;
+  t.mock.method(https, 'request', (_options, onResponse) => {
+    deliver = () => onResponse(upstreamResponse);
+    return upstream;
+  });
+  t.after(() => { upstream.destroy(); upstreamResponse.destroy(); });
+  const request = new PassThrough();
+  Object.assign(request, { method: 'POST', url: '/v1/responses', headers: { ...clientHeaders } });
+  const response = new PassThrough();
+  response.headersSent = false;
+  response.writeHead = status => { response.statusCode = status; response.headersSent = true; };
+  response.resume();
+  t.after(() => { request.destroy(); response.destroy(); });
+  handleRequest(request, response);
+  request.end(JSON.stringify({ model: 'gpt-6-astra', input: 'Hello' }));
+  await once(upstream, 'finish');
+  response.destroy();
+  await new Promise(resolve => setImmediate(resolve));
+  deliver();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(upstreamResponse.destroyed, true);
+});
+
+test('an Anthropic refusal without an OpenRouter key ends in a diagnostic, never 401', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 12 * 60 * 60 * 1000 });
+  const { testKeyOverrides } = await import('../router/upstream.mjs');
+  testKeyOverrides.openrouterApiKey = '';
+  try {
+    mockUpstreamSequence(t, [{ status: 401, body: JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }) }]);
+    const result = await exchangeRaw(claudeRequest('Hello'), inClaudeSession('anthropic-no-fallback-key'));
+    assert.equal(result.status, 200);
+    assert.equal(result.headers['x-codex-router-diagnostic'], 'anthropic-request-refused');
+    assert.match(parseSse(result.rawBody).find(event => event.type === 'response.output_item.done').item.content[0].text,
+      /no OpenRouter key is configured/);
+  } finally {
+    delete testKeyOverrides.openrouterApiKey;
+  }
+});
+
+test('OpenRouter 401/402/403 become diagnostics, never 401 to Codex', async t => {
+  for (const status of [401, 402, 403]) {
+    mockUpstreamSequence(t, [{ status, body: JSON.stringify({ error: { code: status, message: 'refused' } }) }]);
+    const result = await exchangeRaw(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello' }));
+    assert.equal(result.status, 200);
+    assert.equal(result.headers['x-codex-router-diagnostic'], 'openrouter-request-refused');
+    assert.match(parseSse(result.rawBody).find(event => event.type === 'response.output_item.done').item.content[0].text,
+      new RegExp('HTTP ' + status));
+  }
+});
+
+test('rate limits pass through with Retry-After, which Codex honours', async t => {
+  mockUpstreamSequence(t, [{ status: 429, headers: { 'retry-after': '7', 'x-custom': 'kept' }, body: JSON.stringify({ error: { message: 'slow down' } }) }]);
+  const openrouter = await exchangeRaw(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Hello' }));
+  assert.equal(openrouter.status, 429);
+  assert.equal(openrouter.headers['retry-after'], '7');
+  assert.equal(openrouter.headers['x-custom'], 'kept');
+  mockUpstreamSequence(t, [{ status: 429, headers: { 'retry-after': '9' }, body: JSON.stringify({ type: 'error', error: { type: 'rate_limit_error', message: 'slow' } }) }]);
+  const claude = await exchangeRaw(claudeRequest('Hello'), inClaudeSession('rate-limit-passthrough'));
+  assert.equal(claude.status, 429);
+  assert.equal(claude.headers['retry-after'], '9');
+});
+
+test('OpenRouter 404/400 without a key path stay diagnostics with the provider message', async t => {
+  mockUpstreamSequence(t, [{ status: 404, body: JSON.stringify({ error: { code: 404, message: 'not found' } }) }]);
+  const notFound = await exchangeRaw(JSON.stringify({ model: 'openrouter/vendor/model', input: 'Hello' }));
+  assert.equal(notFound.headers['x-codex-router-diagnostic'], 'openrouter-request-refused');
+  mockUpstreamSequence(t, [{ status: 400, body: JSON.stringify({ error: { code: 400, message: 'bad' } }) },
+    { status: 400, body: JSON.stringify({ error: { code: 400, message: 'bad' } }) }]);
+  const bad = await exchangeRaw(JSON.stringify({ model: 'openrouter/vendor/model', input: recoveryHistory }));
+  assert.equal(bad.headers['x-codex-router-diagnostic'], 'openrouter-request-rejected');
+});
+
+test('a client that leaves before the first upstream answers cancels the search setup', async t => {
+  const requests = [];
+  let respondFirst;
+  t.mock.method(https, 'request', (_options, onResponse) => {
+    const index = requests.length;
+    const outgoing = new Writable({
+      autoDestroy: false,
+      write(_chunk, _encoding, callback) { callback(); },
+      final(callback) {
+        if (index === 0) {
+          respondFirst = () => {
+            const first = Readable.from([webSearchFirstResponse()]);
+            first.statusCode = 200;
+            first.headers = { 'content-type': 'text/event-stream' };
+            onResponse(first);
+          };
+        }
+        callback();
+      },
+    });
+    requests.push(outgoing);
+    return outgoing;
+  });
+  const request = new PassThrough();
+  Object.assign(request, { method: 'POST', url: '/v1/responses', headers: { ...clientHeaders, 'session-id': 'early-leave' } });
+  const response = new PassThrough();
+  response.writeHead = () => { response.headersSent = true; };
+  response.resume();
+  t.after(() => { request.destroy(); response.destroy(); for (const r of requests) r.destroy(); });
+  handleRequest(request, response);
+  request.end(searchRequest());
+  while (requests.length < 1) await new Promise(resolve => setImmediate(resolve));
+  response.destroy();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  // The first upstream had not answered yet; answering now must not start a search.
+  respondFirst();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.ok(requests.length <= 2);
+  if (requests.length === 2) assert.equal(requests[1].destroyed, true);
+});
+
+test('a client that leaves during a search cancels the pending continuation', async t => {
+  const requests = [];
+  let releaseSearch;
+  t.mock.method(https, 'request', (_options, onResponse) => {
+    const index = requests.length;
+    const outgoing = new Writable({
+      autoDestroy: false,
+      write(_chunk, _encoding, callback) { callback(); },
+      final(callback) {
+        if (index === 0) {
+          const first = Readable.from([webSearchFirstResponse()]);
+          first.statusCode = 200;
+          first.headers = { 'content-type': 'text/event-stream' };
+          queueMicrotask(() => onResponse(first));
+        } else if (index === 1) {
+          releaseSearch = () => {
+            const result = Readable.from([webSearchResult(200).body]);
+            result.statusCode = 200;
+            result.headers = { 'content-type': 'application/json' };
+            onResponse(result);
+          };
+        }
+        callback();
+      },
+    });
+    requests.push(outgoing);
+    return outgoing;
+  });
+  const request = new PassThrough();
+  Object.assign(request, { method: 'POST', url: '/v1/responses', headers: { ...clientHeaders, 'session-id': 'leave-before-continuation' } });
+  const response = new PassThrough();
+  response.writeHead = () => { response.headersSent = true; };
+  response.resume();
+  t.after(() => { request.destroy(); response.destroy(); for (const r of requests) r.destroy(); });
+  handleRequest(request, response);
+  request.end(searchRequest());
+  while (requests.length < 2) await new Promise(resolve => setImmediate(resolve));
+  response.destroy();
+  await new Promise(resolve => setTimeout(resolve, 10));
+  releaseSearch();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(requests.length, 2, 'no continuation after the client left');
+});
+
+test('a continuation without a key ends the response instead of hanging', async t => {
+  const { testKeyOverrides } = await import('../router/upstream.mjs');
+  t.mock.method(https, 'request', (options, onResponse) => {
+    const chunks = [];
+    return new Writable({
+      write(chunk, _encoding, callback) { chunks.push(chunk); callback(); },
+      final(callback) {
+        const rawBody = Buffer.concat(chunks);
+        const body = rawBody.length > 0 ? JSON.parse(rawBody.toString('utf8')) : null;
+        forwarded.push({ ...options, body, byteLength: rawBody.length });
+        // The first request carries the search step; flip the key before the continuation.
+        if (forwarded.length > 0 && body && Array.isArray(body.input)) testKeyOverrides.openrouterApiKey = '';
+        const isSearch = body && Array.isArray(body.plugins);
+        const spec = isSearch ? webSearchResult(200) : { status: 200, contentType: 'text/event-stream', body: webSearchFirstResponse() };
+        const response = Readable.from([spec.body]);
+        response.statusCode = spec.status;
+        response.headers = { 'content-type': spec.contentType || 'application/json' };
+        queueMicrotask(() => onResponse(response));
+        callback();
+      },
+    });
+  });
+  t.after(() => { delete testKeyOverrides.openrouterApiKey; });
+  const result = await exchangeRaw(searchRequest(), { 'session-id': 'continuation-no-key' });
+  assert.equal(result.status, 200);
+  assert.ok(parseSse(result.rawBody).length > 0);
+  delete testKeyOverrides.openrouterApiKey;
+});
+
+test('router lifecycle helpers report listen failures and shut down', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'], now: Date.now() });
+  const logs = [];
+  t.mock.method(console, 'error', line => logs.push(String(line)));
+  t.mock.method(console, 'log', line => logs.push(String(line)));
+  const { listenFailed, handleServerError, listenServer, registerSignalHandler, shutdown } = await import('../router/unified-router.mjs');
+  const exitBefore = process.exitCode;
+  const originalExit = process.exit;
+  let exited = null;
+  process.exit = code => { exited = code; };
+  try {
+    listenFailed(Object.assign(new Error('taken'), { code: 'EADDRINUSE' }));
+    assert.equal(process.exitCode, 1);
+    assert.match(logs.at(-1), /"event":"router\.listen_failed".*"errorCode":"EADDRINUSE"/);
+    process.exitCode = exitBefore;
+    assert.throws(() => handleServerError(Object.assign(new Error('other'), { syscall: 'other' })), /other/);
+    handleServerError(Object.assign(new Error('taken'), { syscall: 'listen', code: 'EADDRINUSE' }));
+    assert.match(logs.at(-1), /"event":"router\.listen_failed"/);
+    process.exitCode = exitBefore;
+    // A throwing listen is reported the same way.
+    listenServer({ listen() { const error = new Error('bad port'); error.code = 'EINVAL'; throw error; } });
+    assert.match(logs.at(-1), /"event":"router\.listen_failed"/);
+    process.exitCode = exitBefore;
+    // A successful listen reports readiness.
+    let readyCalled = false;
+    listenServer({ listen(_port, _host, ready) { readyCalled = true; ready(); } });
+    assert.equal(readyCalled, true);
+    assert.match(logs.at(-1), /"event":"router\.ready"/);
+    // Shutdown closes the server and exits.
+    let closed = false;
+    exited = null;
+    shutdown('SIGTERM', { close(done) { closed = true; done(); } });
+    assert.equal(closed, true);
+    assert.equal(exited, 0);
+    assert.match(logs.at(-1), /"event":"router\.shutdown"/);
+    // The delayed exits run on timers, not on the request path.
+    exited = null;
+    listenFailed(Object.assign(new Error('taken'), { code: 'EADDRINUSE' }));
+    t.mock.timers.tick(1000);
+    assert.equal(exited, 1);
+    exited = null;
+    shutdown('SIGINT', { close(done) { done(); } });
+    t.mock.timers.tick(5000);
+    assert.equal(exited, 0);
+    // An error without a code logs null, and the registered signal callback
+    // reaches the same shutdown path without emitting a real process signal.
+    const uncodedBefore = logs.length;
+    listenFailed(new Error('unknown listen failure'));
+    const uncoded = logs.slice(uncodedBefore).map(line => JSON.parse(line)).find(entry => entry.event === 'router.listen_failed');
+    assert.equal(uncoded.errorCode, null);
+    process.exitCode = exitBefore;
+    t.mock.timers.tick(1000);
+    let signalClosed = false;
+    let signalHandler;
+    registerSignalHandler('SIGINT', { on(signal, handler) { assert.equal(signal, 'SIGINT'); signalHandler = handler; } },
+      { close(done) { signalClosed = true; done(); } });
+    exited = null;
+    signalHandler();
+    assert.equal(signalClosed, true);
+    assert.equal(exited, 0);
+    assert.ok(logs.some(line => {
+      const entry = JSON.parse(line);
+      return entry.event === 'router.shutdown' && entry.signal === 'SIGINT';
+    }));
+  } finally {
+    process.exit = originalExit;
+    process.exitCode = exitBefore;
+  }
+});
+
+test('openUpstream translates Claude requests, times out, and reports errors', async () => {
+  const { openUpstream } = await import('../router/upstream.mjs');
+  // Anthropic translation without betas.
+  {
+    const seen = {};
+    const fakeProtocol = { request(options, onResponse) {
+      seen.options = options;
+      seen.headers = options.headers;
+      queueMicrotask(() => onResponse({ statusCode: 200, headers: {} }));
+      return { on() {}, end(body) { seen.body = JSON.parse(body.toString()); } };
+    } };
+    const target = { provider: 'anthropic', hostname: 'api.anthropic.com', path: '/v1/messages', protocol: fakeProtocol };
+    const body = Buffer.from(JSON.stringify({ model: 'claude-sonnet-5-5', input: 'Hello' }));
+    await new Promise(resolve => openUpstream({ target, headers: { 'content-type': 'application/json' }, body, onError: () => {} }, () => resolve()));
+    assert.equal(seen.body.model, 'claude-sonnet-5-5');
+    assert.equal(seen.headers['anthropic-beta'], undefined);
+  }
+  // An effort update adds the beta header.
+  {
+    const seen = {};
+    const fakeProtocol = { request(options, onResponse) {
+      seen.headers = options.headers;
+      queueMicrotask(() => onResponse({ statusCode: 200, headers: {} }));
+      return { on() {}, end() {} };
+    } };
+    const target = { provider: 'anthropic', hostname: 'api.anthropic.com', path: '/v1/messages', protocol: fakeProtocol };
+    const body = Buffer.from(JSON.stringify({ model: 'claude-sonnet-5-5', input: [
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'a' }] },
+      { type: 'configuration_update', reasoning: { effort: 'high' } },
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'b' }] },
+    ] }));
+    await new Promise(resolve => openUpstream({ target, headers: { 'anthropic-beta': 'existing' }, body, onError: () => {} }, () => resolve()));
+    assert.match(seen.headers['anthropic-beta'] || '', /mid-conversation-output-config/);
+    assert.match(seen.headers['anthropic-beta'] || '', /existing/);
+  }
+  // Timeout destroys the request.
+  {
+    let handlers = {};
+    let destroyed = null;
+    const fakeRequest = { on(event, handler) { handlers[event] = handler; return this; }, end() {}, destroy(error) { destroyed = error; } };
+    const fakeProtocol = { request(_options, _onResponse) { return fakeRequest; } };
+    const target = { provider: 'openrouter', hostname: 'openrouter.ai', path: '/api/v1/responses', protocol: fakeProtocol };
+    openUpstream({ target, headers: {}, body: Buffer.from('{}'), onError: () => {} }, () => {});
+    handlers.timeout();
+    assert.match(destroyed.message, /timed out/);
+    let reported = null;
+    const failing = { on(event, handler) { if (event === 'error') queueMicrotask(() => handler(new Error('net down'))); return this; }, end() {}, destroy() {} };
+    openUpstream({ target: { ...target, protocol: { request: () => failing } }, headers: {}, body: Buffer.from('{}'), onError: error => { reported = error; } }, () => {});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(reported.message, /net down/);
+  }
+});
+
+test('usageTap survives scanner faults without affecting the stream', async () => {
+  const { usageTap } = await import('../router/upstream.mjs');
+  const collect = tap => new Promise((resolve, reject) => {
+    const chunks = [];
+    tap.on('data', chunk => chunks.push(chunk));
+    tap.on('end', () => resolve(Buffer.concat(chunks).toString()));
+    tap.on('error', reject);
+  });
+  // A fault during transform overflows the line but passes bytes through.
+  {
+    const tap = usageTap(() => { throw new Error('must not be called'); });
+    const original = String.prototype.indexOf;
+    String.prototype.indexOf = function () { throw new Error('mock scanner fault'); };
+    try {
+      tap.write(Buffer.from('data: partial'));
+    } finally {
+      String.prototype.indexOf = original;
+    }
+    tap.end(Buffer.from('data: {"type":"response.completed","response":{"id":"r","status":"completed","usage":{"input_tokens":9}}}\n\n'));
+    const body = await collect(tap);
+    assert.match(body, /response\.completed/);
+  }
+  // A fault during flush never affects the response.
+  {
+    const tap = usageTap(() => {});
+    tap.write(Buffer.from('data: hello\n\n'));
+    const original = String.prototype.startsWith;
+    String.prototype.startsWith = function () { throw new Error('mock flush fault'); };
+    try {
+      tap.end();
+    } finally {
+      String.prototype.startsWith = original;
+    }
+    await collect(tap);
+  }
+});
+
+test('work started after the client left is cancelled at once', async t => {
+  const request = new PassThrough();
+  Object.assign(request, { method: 'POST', url: '/v1/responses', headers: { ...clientHeaders, 'session-id': 'track-after-leave' } });
+  const response = new PassThrough();
+  response.writeHead = () => { response.headersSent = true; };
+  response.resume();
+  t.after(() => { request.destroy(); response.destroy(); });
+  const requests = [];
+  t.mock.method(https, 'request', (_options, onResponse) => {
+    const index = requests.length;
+    const outgoing = new Writable({
+      autoDestroy: false,
+      write(_chunk, _encoding, callback) { callback(); },
+      final(callback) {
+        if (index === 0) {
+          const first = Readable.from([webSearchFirstResponse()]);
+          first.statusCode = 200;
+          first.headers = { 'content-type': 'text/event-stream' };
+          queueMicrotask(() => onResponse(first));
+        } else if (index === 1) {
+          // Destroy the downstream response synchronously while the search is created,
+          // so tracking it sees the client already gone and cancels at once.
+          response.destroy();
+        }
+        callback();
+      },
+    });
+    requests.push(outgoing);
+    return outgoing;
+  });
+  handleRequest(request, response);
+  request.end(searchRequest());
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.ok(requests.length >= 2);
+  assert.equal(requests[1].destroyed, true);
+});
+
+test('a continuation started after the client left never reaches the upstream', async t => {
+  const request = new PassThrough();
+  Object.assign(request, { method: 'POST', url: '/v1/responses', headers: { ...clientHeaders, 'session-id': 'continuation-after-leave' } });
+  const response = new PassThrough();
+  response.writeHead = () => { response.headersSent = true; };
+  response.resume();
+  t.after(() => { request.destroy(); response.destroy(); });
+  const requests = [];
+  t.mock.method(https, 'request', (_options, onResponse) => {
+    const index = requests.length;
+    const outgoing = new Writable({
+      autoDestroy: false,
+      write(_chunk, _encoding, callback) { callback(); },
+      final(callback) {
+        if (index === 0) {
+          const first = Readable.from([webSearchFirstResponse()]);
+          first.statusCode = 200;
+          first.headers = { 'content-type': 'text/event-stream' };
+          queueMicrotask(() => onResponse(first));
+        } else if (index === 1) {
+          const result = Readable.from([webSearchResult(200).body]);
+          result.statusCode = 200;
+          result.headers = { 'content-type': 'application/json' };
+          queueMicrotask(() => onResponse(result));
+        }
+        callback();
+      },
+    });
+    requests.push(outgoing);
+    return outgoing;
+  });
+  // Saving the search results runs just before the continuation; leaving then
+  // means the continuation sees the client gone and never reaches the upstream.
+  const rename = fs.renameSync;
+  fs.renameSync = (from, to) => {
+    if (String(to).endsWith('web-search-results.json')) response.destroy();
+    return rename(from, to);
+  };
+  syncBuiltinESMExports();
+  try {
+    handleRequest(request, response);
+    request.end(searchRequest());
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(requests.length, 2, 'no continuation after the client left during the save');
+  } finally {
+    fs.renameSync = rename;
+    syncBuiltinESMExports();
+  }
+});
+
+test('upstream responses without a status or SSE content use the safe fallbacks', async t => {
+  let index = 0;
+  t.mock.method(https, 'request', (_options, onResponse) => {
+    const current = index;
+    index += 1;
+    return new Writable({
+      write(_chunk, _encoding, callback) { callback(); },
+      final(callback) {
+        const response = Readable.from(['{}']);
+        response.statusCode = current === 0 ? undefined : 200;
+        response.headers = current === 0 ? { 'content-type': 'application/json' } : {};
+        queueMicrotask(() => onResponse(response));
+        callback();
+      },
+    });
+  });
+
+  const missingStatus = await exchangeRaw(JSON.stringify({ model: 'gpt-6-astra', input: 'Hello' }));
+  assert.equal(missingStatus.status, 502);
+  assert.equal(missingStatus.rawBody, '{}');
+  const missingContentType = await exchangeRaw(JSON.stringify({ model: 'gpt-6-astra', input: 'Hello' }));
+  assert.equal(missingContentType.status, 200);
+  assert.equal(missingContentType.rawBody, '{}');
+});
+
+test('an upstream error after headers destroys the downstream response', async t => {
+  const response = new PassThrough();
+  response.writeHead = () => { response.headersSent = true; };
+  response.resume();
+  let errorHandler;
+  let deliver;
+  let upstreamResponse;
+  t.mock.method(https, 'request', (_options, onResponse) => ({
+    on(event, handler) { if (event === 'error') errorHandler = handler; },
+    destroy() {},
+    end() {
+      deliver = () => {
+        upstreamResponse = new PassThrough();
+        upstreamResponse.statusCode = 200;
+        upstreamResponse.headers = { 'content-type': 'application/json' };
+        onResponse(upstreamResponse);
+      };
+    },
+  }));
+  const request = new PassThrough();
+  Object.assign(request, { method: 'POST', url: '/v1/responses', headers: { ...clientHeaders } });
+  const closed = once(response, 'close');
+  handleRequest(request, response);
+  request.end(JSON.stringify({ model: 'gpt-6-astra', input: 'Hello' }));
+  await new Promise(resolve => setImmediate(resolve));
+  deliver();
+  errorHandler(new Error('failed after the headers'));
+  await closed;
+  upstreamResponse?.end();
+  assert.equal(response.headersSent, true);
+  assert.equal(response.destroyed, true);
+});
+
+test('an upstream end after the client leaves does not log a completed response', async t => {
+  let upstreamResponse;
+  let delivered;
+  const response = new PassThrough();
+  response.writeHead = status => {
+    response.statusCode = status;
+    response.headersSent = true;
+  };
+  response.resume();
+  t.mock.method(https, 'request', (_options, onResponse) => {
+    const outgoing = new Writable({
+      write(_chunk, _encoding, callback) { callback(); },
+      final(callback) {
+        upstreamResponse = new PassThrough();
+        upstreamResponse.statusCode = 200;
+        upstreamResponse.headers = { 'content-type': 'application/json' };
+        delivered = true;
+        queueMicrotask(() => onResponse(upstreamResponse));
+        callback();
+      },
+    });
+    return outgoing;
+  });
+  const request = new PassThrough();
+  Object.assign(request, { method: 'POST', url: '/v1/responses', headers: { ...clientHeaders } });
+  const logsBefore = parsedLogEntries().length;
+  handleRequest(request, response);
+  request.end(JSON.stringify({ model: 'gpt-6-astra', input: 'Hello' }));
+  while (!delivered) await new Promise(resolve => setImmediate(resolve));
+  const closed = once(response, 'close');
+  response.destroy();
+  await closed;
+  upstreamResponse.emit('end');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(parsedLogEntries().slice(logsBefore).some(entry => entry.event === 'upstream.response_finished'), false);
+});
+
+function mockClaudeSearchContinuation(t, continuation) {
+  const requests = [];
+  t.mock.method(https, 'request', (_options, onResponse) => {
+    const current = requests.length;
+    const outgoing = new Writable({
+      autoDestroy: false,
+      write(_chunk, _encoding, callback) { callback(); },
+      final(callback) {
+        if (current === 0) {
+          const first = Readable.from([claudeStream([
+            { start: { type: 'tool_use', id: 'toolu_cover', name: 'web_search', input: {} },
+              deltas: [{ type: 'input_json_delta', partial_json: '{"query":"coverage edge"}' }] },
+          ], { stopReason: 'tool_use' })]);
+          first.statusCode = 200;
+          first.headers = { 'content-type': 'text/event-stream' };
+          queueMicrotask(() => onResponse(first));
+        } else if (current === 1) {
+          const search = Readable.from([webSearchResult(200).body]);
+          search.statusCode = 200;
+          search.headers = { 'content-type': 'application/json' };
+          queueMicrotask(() => onResponse(search));
+        } else {
+          continuation({ onResponse, outgoing });
+        }
+        callback();
+      },
+    });
+    requests.push(outgoing);
+    return outgoing;
+  });
+  return requests;
+}
+
+test('an Anthropic continuation refusal without an OpenRouter key ends in the no-key diagnostic', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 24 * 60 * 60 * 1000 });
+  const { testKeyOverrides } = await import('../router/upstream.mjs');
+  mockClaudeSearchContinuation(t, ({ onResponse }) => {
+    testKeyOverrides.openrouterApiKey = '';
+    const refused = Readable.from([JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } })]);
+    refused.statusCode = 401;
+    refused.headers = { 'content-type': 'application/json' };
+    queueMicrotask(() => onResponse(refused));
+  });
+  t.after(() => { delete testKeyOverrides.openrouterApiKey; });
+  const result = await exchangeRaw(claudeRequest('How many contributors?', { tools: [{ type: 'web_search' }] }),
+    inClaudeSession('continuation-no-openrouter-key'));
+  assert.match(result.rawBody, /no OpenRouter key is configured/);
+  assert.equal(parseSse(result.rawBody).at(-1).type, 'response.completed');
+});
+
+test('an unexpected Anthropic continuation status names Anthropic in the diagnostic', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 24 * 60 * 60 * 1000 });
+  mockClaudeSearchContinuation(t, ({ onResponse }) => {
+    const rejected = Readable.from([JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'bad step shape' } })]);
+    rejected.statusCode = 400;
+    rejected.headers = { 'content-type': 'application/json' };
+    queueMicrotask(() => onResponse(rejected));
+  });
+  const result = await exchangeRaw(claudeRequest('How many contributors?', { tools: [{ type: 'web_search' }] }),
+    { ...inClaudeSession('continuation-anthropic-diagnostic'), 'x-codex-router-fallback': 'none' });
+  assert.match(result.rawBody, /Anthropic rejected the next step/);
+  assert.equal(parseSse(result.rawBody).at(-1).type, 'response.completed');
+});
+
+test('a continuation request error fails the response so Codex retries', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 24 * 60 * 60 * 1000 });
+  mockClaudeSearchContinuation(t, ({ outgoing }) => {
+    queueMicrotask(() => outgoing.emit('error', new Error('continuation connection failed')));
+  });
+  const result = await exchangeRaw(claudeRequest('How many contributors?', { tools: [{ type: 'web_search' }] }),
+    { ...inClaudeSession('continuation-request-error'), 'x-codex-router-fallback': 'none' });
+  const failed = parseSse(result.rawBody).at(-1);
+  assert.equal(failed.type, 'response.failed');
+  assert.equal(failed.response.error.code, 'server_error');
+});
+
+test('a continuation body that closes early fails the response so Codex retries', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 24 * 60 * 60 * 1000 });
+  mockClaudeSearchContinuation(t, ({ onResponse }) => {
+    const broken = new PassThrough();
+    broken.statusCode = 500;
+    broken.headers = { 'content-type': 'application/json' };
+    queueMicrotask(() => {
+      onResponse(broken);
+      broken.write('{"error":');
+      broken.destroy();
+    });
+  });
+  const result = await exchangeRaw(claudeRequest('How many contributors?', { tools: [{ type: 'web_search' }] }),
+    { ...inClaudeSession('continuation-body-closed'), 'x-codex-router-fallback': 'none' });
+  const failed = parseSse(result.rawBody).at(-1);
+  assert.equal(failed.type, 'response.failed');
+  assert.equal(failed.response.error.code, 'server_error');
+});
+
+test('a continuation without a status or content type falls back safely', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 24 * 60 * 60 * 1000 });
+  for (const [status, headers, session] of [
+    [undefined, { 'content-type': 'application/json' }, 'continuation-no-status'],
+    [200, {}, 'continuation-no-content-type'],
+  ]) {
+    mockClaudeSearchContinuation(t, ({ onResponse }) => {
+      const answer = Readable.from(['{"error":{"message":"not a stream"}}']);
+      answer.statusCode = status;
+      answer.headers = headers;
+      queueMicrotask(() => onResponse(answer));
+    });
+    const result = await exchangeRaw(claudeRequest('How many contributors?', { tools: [{ type: 'web_search' }] }),
+      { ...inClaudeSession(session), 'x-codex-router-fallback': 'none' });
+    assert.equal(parseSse(result.rawBody).at(-1).type, 'response.completed');
+  }
 });

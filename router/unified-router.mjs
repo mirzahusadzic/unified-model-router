@@ -6,10 +6,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { anthropicMaxTokens, anthropicMaxTokensLimit, anthropicRefusal, messagesMaxTokens, thinkingOffModels } from './anthropic.mjs';
 import { isObject, routerRevision as sourceRevision } from './common.mjs';
-import { anthropicApiKey, envFile, host, logEvent, modelCatalogFile, openrouterApiKey, port, rejectedRequestDir, routerToken } from './config.mjs';
+import { envFile, host, logEvent, modelCatalogFile, port, rejectedRequestDir, routerToken } from './config.mjs';
 import { claudeRoute, holdAnthropicRoute, protectedSession, recordClaudeRoute, sessionRefusal, sessionSide, trainingDeclaration, trainingDeclarations } from './sessions.mjs';
 import { generationReport, reportValues, servedByStream } from './served-by.mjs';
-import { contextOverflowMessage, openUpstream, openrouterTarget, parseUpstreamError, readUpstreamBody, routeFor, upstreamHeaders, upstreamModelFor, upstreamTrace, usageLogging, usageTap } from './upstream.mjs';
+import { contextOverflowMessage, effectiveAnthropicKey, effectiveOpenrouterKey, openUpstream, openrouterTarget, parseUpstreamError, readUpstreamBody, routeFor, upstreamHeaders, upstreamModelFor, upstreamTrace, usageLogging, usageTap } from './upstream.mjs';
 import { openRouterStream, runWebSearch, webSearchEffort } from './web-search.mjs';
 import { adaptForUpstream, prepareOpenRouterRecovery } from './adapt.mjs';
 
@@ -75,7 +75,7 @@ function responseHeaders(headers) {
   return result;
 }
 
-function sendJson(response, status, value) {
+export function sendJson(response, status, value) {
   if (response.headersSent) {
     response.end();
     return;
@@ -96,11 +96,14 @@ export function captureDirectoryAllowed(directory, routerDirectory, platform = p
   return resolve(directory).toLowerCase() === resolve(routerDirectory).toLowerCase();
 }
 
-function captureRejectedRequest({
+export function captureRejectedRequest({
   requestId, attempt, requestBody, responseBody,
-}) {
-  if (!rejectedRequestDir) return null;
-  if (!captureDirectoryAllowed(rejectedRequestDir, dirname(envFile))) {
+}, overrides = {}) {
+  const directory = overrides.directory ?? rejectedRequestDir;
+  const routerDirectory = overrides.routerDirectory ?? dirname(envFile);
+  const platform = overrides.platform ?? process.platform;
+  if (!directory) return null;
+  if (!captureDirectoryAllowed(directory, routerDirectory, platform)) {
     logEvent('error', 'openrouter.rejection_capture_refused', {
       requestId, attempt, reason: 'not_private_router_directory',
     });
@@ -108,9 +111,9 @@ function captureRejectedRequest({
   }
   const prefix = `${requestId}-attempt-${attempt}`;
   try {
-    mkdirSync(rejectedRequestDir, { recursive: true, mode: 0o700 });
-    writeFileSync(join(rejectedRequestDir, `${prefix}.request.json`), requestBody, { mode: 0o600 });
-    writeFileSync(join(rejectedRequestDir, `${prefix}.response.json`), responseBody, { mode: 0o600 });
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    writeFileSync(join(directory, `${prefix}.request.json`), requestBody, { mode: 0o600 });
+    writeFileSync(join(directory, `${prefix}.response.json`), responseBody, { mode: 0o600 });
     return prefix;
   } catch (error) {
     logEvent('error', 'openrouter.rejection_capture_failed', {
@@ -253,8 +256,8 @@ const server = http.createServer((request, response) => {
     sendJson(response, 200, {
       ok: true,
       openai: true,
-      openrouter: Boolean(openrouterApiKey),
-      anthropic: Boolean(anthropicApiKey),
+      openrouter: Boolean(effectiveOpenrouterKey()),
+      anthropic: Boolean(effectiveAnthropicKey()),
       clientAuth: true,
       revision: routerRevision,
       // The verifier compares it with the service's own process, so a stray
@@ -428,7 +431,7 @@ const server = http.createServer((request, response) => {
       }
       target = openrouterTarget;
     }
-    if (target.provider === 'anthropic' && !claudeFallback && !anthropicApiKey) {
+    if (target.provider === 'anthropic' && !claudeFallback && !effectiveAnthropicKey()) {
       sendJson(response, 502, { error: anthropicRefusedError('no_api_key') });
       return;
     }
@@ -553,13 +556,13 @@ const server = http.createServer((request, response) => {
       if (reason) {
         holdAnthropicRoute();
         logEvent('error', 'anthropic.refused', {
-          requestId, sessionId: requestInfo.sessionId, model, status, reason, continuation: true, fallback: claudeFallback && Boolean(openrouterApiKey),
+          requestId, sessionId: requestInfo.sessionId, model, status, reason, continuation: true, fallback: claudeFallback && Boolean(effectiveOpenrouterKey()),
         });
         if (!claudeFallback) {
           const { code, message } = anthropicRefusedError(reason);
           return { failure: { code, message } };
         }
-        if (!openrouterApiKey) return { diagnostic: anthropicRefusedDiagnostic(reason) };
+        if (!effectiveOpenrouterKey()) return { diagnostic: anthropicRefusedDiagnostic(reason) };
         recordClaudeRoute(requestInfo.sessionId, 'openrouter');
         return { failure: { code: 'server_error', message: `Anthropic's API refused the request (${reason}); the thread continues on OpenRouter.` } };
       }
@@ -707,14 +710,14 @@ const server = http.createServer((request, response) => {
                 holdAnthropicRoute();
                 logEvent('error', 'anthropic.refused', {
                   requestId, sessionId: requestInfo.sessionId, model, status, reason: refusalReason, attempt,
-                  fallback: claudeFallback && Boolean(openrouterApiKey), ...trace,
+                  fallback: claudeFallback && Boolean(effectiveOpenrouterKey()), ...trace,
                 });
                 if (clientClosed || response.destroyed) return;
                 if (!claudeFallback) {
                   sendJson(response, 502, { error: anthropicRefusedError(refusalReason) });
                   return;
                 }
-                if (!openrouterApiKey) {
+                if (!effectiveOpenrouterKey()) {
                   sendResponsesDiagnostic(response, requestId, anthropicRefusedDiagnostic(refusalReason), 'anthropic-request-refused');
                   return;
                 }
@@ -906,37 +909,47 @@ const server = http.createServer((request, response) => {
 // A taken port, or an invalid one, ends the process with one JSON event
 // instead of an error's stack trace, so the log stays one object per line; the
 // service manager starts the router again until the port is free.
-function listenFailed(error) {
+export function listenFailed(error) {
   logEvent('error', 'router.listen_failed', { host, port, errorCode: error.code ?? null });
   process.exitCode = 1;
   setTimeout(() => process.exit(1), 1000).unref();
 }
 
-server.on('error', error => {
+export function handleServerError(error) {
   if (error.syscall !== 'listen') throw error;
-  listenFailed(error);
-});
-
-try {
-  server.listen(port, host, () => {
-    logEvent('info', 'router.ready', {
-      host,
-      port,
-      openrouterConfigured: Boolean(openrouterApiKey),
-      anthropicConfigured: Boolean(anthropicApiKey),
-      revision: routerRevision,
-    });
-  });
-} catch (error) {
-  // An invalid port throws here instead of emitting 'error'.
   listenFailed(error);
 }
 
-function shutdown(signal) {
+server.on('error', handleServerError);
+
+export function listenServer(target = server) {
+  try {
+    target.listen(port, host, () => {
+      logEvent('info', 'router.ready', {
+        host,
+        port,
+        openrouterConfigured: Boolean(effectiveOpenrouterKey()),
+        anthropicConfigured: Boolean(effectiveAnthropicKey()),
+        revision: routerRevision,
+      });
+    });
+  } catch (error) {
+    // An invalid port throws here instead of emitting 'error'.
+    listenFailed(error);
+  }
+}
+
+listenServer();
+
+export function shutdown(signal, target = server) {
   logEvent('info', 'router.shutdown', { signal });
-  server.close(() => process.exit(0));
+  target.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+export function registerSignalHandler(signal, emitter = process, target = server) {
+  emitter.on(signal, () => shutdown(signal, target));
+}
+
+registerSignalHandler('SIGTERM');
+registerSignalHandler('SIGINT');
