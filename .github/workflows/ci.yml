@@ -43,17 +43,19 @@ jobs:
           flags+=(--test-coverage-include='install.mjs')
           if [ "${{ matrix.node }}" = "20" ]; then
             node --test
-          elif [ "${{ matrix.node }}" = "24" ] && [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          elif [ "${{ matrix.node }}" != "20" ] && [ "${{ matrix.os }}" != "windows-latest" ]; then
             mkdir -p coverage
             node --test "${flags[@]}" --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 \
               --test-reporter=spec --test-reporter-destination=stdout \
               --test-reporter=lcov --test-reporter-destination=coverage/lcov.info
-            for file in install.mjs router/*.mjs scripts/*.mjs; do
-              if ! grep -Fqx "SF:$file" coverage/lcov.info; then
-                printf 'Coverage report omits production file: %s\n' "$file" >&2
-                exit 1
-              fi
-            done
+            if [ "${{ matrix.node }}" = "24" ] && [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+              for file in install.mjs router/*.mjs scripts/*.mjs; do
+                if ! grep -Fqx "SF:$file" coverage/lcov.info; then
+                  printf 'Coverage report omits production file: %s\n' "$file" >&2
+                  exit 1
+                fi
+              done
+            fi
           else
             node --test "${flags[@]}"
           fi

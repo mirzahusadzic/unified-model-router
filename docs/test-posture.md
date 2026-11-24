@@ -27,9 +27,9 @@ Other programs rely on the request headers and their values, the `/health` capab
 
 ### JavaScript coverage
 
-Node 22 and 24 legs run the suite once with the test runner's built-in coverage over exactly the files the installer ships; Node 20 runs plain `node --test`. The canonical Ubuntu Node 24 leg enforces 100% line, branch, and function thresholds, while every other leg reports coverage without thresholds so platform differences stay visible without failing the run.
+Node 22 and 24 legs run the suite once with the test runner's built-in coverage over exactly the files the installer ships; Node 20 runs plain `node --test`. Ubuntu and macOS enforce 100% line, branch, and function thresholds on Node 22 and 24. Windows reports coverage without thresholds because its host-specific branches differ.
 
-The shipped files meet 100% line, branch, and function coverage. Close future gaps with focused regression tests, never by narrowing the includes. The canonical leg also writes LCOV and fails if any `install.mjs`, `router/*.mjs`, or `scripts/*.mjs` file is absent, so an unloaded file cannot disappear from the denominator. It runs this single invocation, so tests execute once, not once per report:
+The shipped files meet 100% line, branch, and function coverage. Close future gaps with focused regression tests, never by narrowing the includes. The canonical Ubuntu Node 24 leg also checks LCOV and fails if any `install.mjs`, `router/*.mjs`, or `scripts/*.mjs` file is absent, so an unloaded file cannot disappear from the denominator. Each leg runs this single invocation, so tests execute once, not once per report:
 
 ```sh
 node --test --experimental-test-coverage \
@@ -52,8 +52,8 @@ node --test --experimental-test-coverage \
 
 | OS | Node 20 | Node 22 | Node 24 |
 | --- | --- | --- | --- |
-| Ubuntu | Plain `node --test` | Coverage, no thresholds | Coverage with 100% thresholds (canonical) |
-| macOS | Plain `node --test` | Coverage, no thresholds | Coverage, no thresholds |
+| Ubuntu | Plain `node --test` | Coverage with 100% thresholds | Coverage with 100% thresholds (canonical) |
+| macOS | Plain `node --test` | Coverage with 100% thresholds | Coverage with 100% thresholds |
 | Windows | Plain `node --test` | Coverage, no thresholds | Coverage, no thresholds, plus the access-control step |
 
 `tests/prompt-budget.test.mjs` also needs the tested Codex CLI and skips without it. A separate [compatibility workflow](../.github/workflows/compatibility.yml) installs that CLI on macOS and runs both the prompt-budget suite and a smaller request probe. `tests/service-pids.test.mjs` runs with fake service managers, and the installer suite runs `platform/unix/install.sh` on macOS and Linux and `platform/windows/install.ps1` on Windows.
