@@ -73,7 +73,7 @@ Shared modules: `scripts/openrouter-prompts.mjs` holds the prompt rules for Open
 
 `node --test` runs every `.test.mjs` file on macOS, Linux, and Windows. The tests use synthetic upstreams and need no credentials or network. `tests/prompt-budget.test.mjs` also needs the tested Codex CLI and skips without it in the main matrix; the compatibility workflow installs that CLI.
 
-[CI](.github/workflows/ci.yml) runs on pushes, pull requests, and manual dispatch across Ubuntu (Node.js 20, 22, and 24) plus macOS and Windows (Node.js 24). Each leg runs the suite once: plain tests on Node.js 20, built-in coverage elsewhere, with 100% line, branch, and function thresholds enforced only on the canonical Ubuntu Node.js 24 leg. JavaScript, Bash, and Windows PowerShell syntax checks, catalog JSON validation, and the Windows access-control test ride along. [Test posture](docs/test-posture.md) separates the caller contract, coverage, the environment matrix, and the live checks CI cannot do, with the per-file inventory.
+[CI](.github/workflows/ci.yml) runs on pushes, pull requests, and manual dispatch for Node.js 20, 22, and 24 on Ubuntu, macOS, and Windows. Each leg runs the suite once: plain tests on Node.js 20, built-in coverage elsewhere, with 100% line, branch, and function thresholds enforced only on the canonical Ubuntu Node.js 24 leg. JavaScript, Bash, and Windows PowerShell syntax checks, catalog JSON validation, and the Windows access-control test ride along. [Test posture](docs/test-posture.md) separates the caller contract, coverage, the environment matrix, and the live checks CI cannot do, with the per-file inventory.
 
 ---
 

@@ -21,6 +21,7 @@ Other programs rely on the request headers and their values, the `/health` capab
 | `/health` capability keys, the served-by report, and `GET /v1/generations/<id>` | `tests/unified-router.test.mjs`, `tests/verify-health.test.mjs` |
 | Catalog entries, their rendered prompts, and each entry's `training` value | `tests/catalog.test.mjs` |
 | Installer help text and setting validation, matching the [installer settings](setup.md#installer-settings) | `tests/install.test.mjs` |
+| Unix and Windows installer/verifier parity | `tests/installer-parity.test.mjs` |
 
 ---
 
@@ -52,8 +53,8 @@ node --test --experimental-test-coverage \
 | OS | Node 20 | Node 22 | Node 24 |
 | --- | --- | --- | --- |
 | Ubuntu | Plain `node --test` | Coverage, no thresholds | Coverage with 100% thresholds (canonical) |
-| macOS | Not run | Not run | Coverage, no thresholds |
-| Windows | Not run | Not run | Coverage, no thresholds, plus the access-control step |
+| macOS | Plain `node --test` | Coverage, no thresholds | Coverage, no thresholds |
+| Windows | Plain `node --test` | Coverage, no thresholds | Coverage, no thresholds, plus the access-control step |
 
 `tests/prompt-budget.test.mjs` also needs the tested Codex CLI and skips without it. A separate [compatibility workflow](../.github/workflows/compatibility.yml) installs that CLI on macOS and runs both the prompt-budget suite and a smaller request probe. `tests/service-pids.test.mjs` runs with fake service managers, and the installer suite runs `platform/unix/install.sh` on macOS and Linux and `platform/windows/install.ps1` on Windows.
 
@@ -81,7 +82,8 @@ The inventory below is the full `node --test` suite; keep it in step with the `t
 | --- | --- | --- |
 | `tests/unified-router.test.mjs` | Routing, history repair, reasoning and structured-output adaptation, OpenRouter recovery, provider isolation, endpoint preferences, header allowlists, streaming, web search, Claude's Messages translation and route fallback, and logs. | All |
 | `tests/credentials.test.mjs` | Credential files and configuration merging: tokens, managed apps, analytics, and agent settings, and TOML strings and comments. | All |
-| `tests/catalog.test.mjs` | Catalog entries, rendered prompts and the Codex tools they must not mention, prompt suffixes, catalog-build validation, and `verify-catalog.mjs`. | All |
+| `tests/catalog.test.mjs` | Every entry's schema and limits, rendered prompts, Codex-only tool mentions, prompt suffixes, catalog-build validation, and `verify-catalog.mjs`. | All |
+| `tests/installer-parity.test.mjs` | Shared flags, environment settings, backups, helper calls, verifier checks, user-visible text, and explicit platform-only differences. | All |
 | `tests/native-models.test.mjs` | ChatGPT plan detection and hiding native models. | All |
 | `tests/install.test.mjs` | End-to-end installs without a service through `install.mjs` and the platform scripts, collision guards, key sources, setting validation, the closing summary and verifier report, the help text and argument errors, the daemon restart and pin step, and that the Unix scripts need no `jq`. Runs `platform/unix/install.sh` on macOS and Linux and `platform/windows/install.ps1` on Windows. | All, per-platform installer |
 | `tests/log-level.test.mjs` | Router startup settings: log levels, endpoint preferences, and a corrupt isolation record. | All |
