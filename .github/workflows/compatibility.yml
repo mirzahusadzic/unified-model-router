@@ -1,0 +1,90 @@
+name: Compatibility
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      codex_versions:
+        description: 'Comma-separated Codex versions for request-capture comparison (public npm packages only; captures stay on loopback)'
+        required: false
+        default: ''
+      full_prompt_budget:
+        description: 'Also run the full prompt-budget suite on macOS'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Codex request capture / ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install the tested Codex CLI
+        run: |
+          tested="$(node -p "require('fs').readFileSync('install.mjs','utf8').match(/const testedCodexVersion = '([^']+)'/)[1]")"
+          npm install -g "@openai/codex@${tested}"
+          codex --version
+      - name: Check integration syntax
+        run: |
+          for file in tests/integration/*.mjs; do
+            node --check "$file"
+          done
+      - name: Run capture tests
+        run: node --test tests/integration/codex-capture.test.mjs
+      - name: Compare Codex versions
+        if: inputs.codex_versions != ''
+        env:
+          CODEX_CAPTURE_VERSIONS: ${{ inputs.codex_versions }}
+        run: node --test tests/integration/codex-capture.test.mjs
+
+  lifecycle:
+    name: Service lifecycle / ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install the tested Codex CLI
+        run: |
+          tested="$(node -p "require('fs').readFileSync('install.mjs','utf8').match(/const testedCodexVersion = '([^']+)'/)[1]")"
+          npm install -g "@openai/codex@${tested}"
+          codex --version
+      - name: Run lifecycle tests
+        run: node --test tests/integration/service-lifecycle.test.mjs
+      - name: Show manual release smoke
+        run: node tests/integration/service-lifecycle.mjs --real-smoke
+
+  prompt-budget:
+    name: Prompt budget / macOS tested CLI
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install the tested Codex CLI
+        run: |
+          tested="$(node -p "require('fs').readFileSync('install.mjs','utf8').match(/const testedCodexVersion = '([^']+)'/)[1]")"
+          npm install -g "@openai/codex@${tested}"
+          codex --version
+      - name: Run compatibility probe
+        run: node --test tests/integration/prompt-budget-compat.test.mjs
+      - name: Run full prompt-budget suite
+        if: inputs.full_prompt_budget != false
+        run: node --test tests/prompt-budget.test.mjs
