@@ -418,6 +418,7 @@ codex -m ultra-spark-private/deepseek-v4.1-flash-1017
 ```
 
 - **Workers:** it splits broad tasks such as reviews across parallel Muse Spark 1.3 workers, up to 10 at once, and hands them chores such as code searches, test runs, and mechanical edits through Codex's `spawn_agent` tool. Workers are spawned with `fork_context: false`, so they see only their task.
+- **Worker model:** the router records the lead tier and refuses a spawned thread on any other model with HTTP 409 (`subagent_model_mismatch`). This Ultra Spark lead can spawn only Muse Spark 1.3, and the check survives restarts. Direct Muse threads outside its session are unaffected.
 - **The lead:** design decisions, final edits, and verification stay in the DeepSeek thread; the default reasoning effort is `max`.
 - **No training:** from its first request, with or without a session ID, every OpenRouter request in its session, the router's searches included, carries `provider.data_collection: "deny"`. DeepSeek then runs on an endpoint that does not collect data instead of DeepSeek's own, so your OpenRouter settings must allow one, such as Fireworks.
 - **Isolation:** the router refuses the training tier in its session, so a worker spawned on Muse Spark 1.3 Contributor gets HTTP 409. It may share a session with OpenAI and Claude models.
@@ -434,9 +435,11 @@ codex -m ultra-spark/deepseek-v4.1-flash-1017
 > [!WARNING]
 > Workers inherit Muse's contributor terms, so use the mode only for code you are willing to share.
 
+The router pins spawned threads in this session to Muse Spark 1.3 Contributor. Any other worker model gets HTTP 409 (`subagent_model_mismatch`) before forwarding, including a non-Contributor Muse override. Direct Muse threads outside the Ultra Spark session are unaffected.
+
 ##### Forked-context backstop
 
-The router also catches workers forked with the lead's history, by their tool call IDs. It remembers, in memory, the tool call IDs in Ultra Spark Contributor requests from a main thread, whose thread ID Codex sets equal to the session ID; a spawned agent in the same session that sends one of them to Muse or another training-tier model other than Ultra Spark Contributor gets HTTP 409 (`forked_lead_context`), and nothing is sent upstream. Switching the lead thread itself to Muse with `/model` is still allowed.
+After the worker-model check passes, the router also catches workers forked with the lead's history by their tool call IDs. It remembers, in memory, the tool call IDs in Ultra Spark Contributor requests from a main thread, whose thread ID Codex sets equal to the session ID; a spawned Muse Contributor agent in the same session that sends one of them gets HTTP 409 (`forked_lead_context`), and nothing is sent upstream. Switching the lead thread itself to Muse with `/model` is still allowed.
 
 The check matches tool call IDs only, so it misses:
 

@@ -659,6 +659,13 @@ test('a training-tier worker that carries the Ultra Spark lead history is refuse
     assert.equal(result.body.error.code, 'forked_lead_context');
     assert.equal(forwarded.length, forwardedBefore);
   };
+  const wrongWorker = async (body, headers) => {
+    const forwardedBefore = forwarded.length;
+    const result = await exchange(JSON.stringify(body), headers);
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error.code, 'subagent_model_mismatch');
+    assert.equal(forwarded.length, forwardedBefore);
+  };
 
   // A forked worker that arrives before the lead's first request after a
   // restart claims nothing: only the main thread's requests are recorded.
@@ -677,7 +684,7 @@ test('a training-tier worker that carries the Ultra Spark lead history is refuse
 
   // A worker that inherited the Ultra Spark model gains no exemption from its
   // own Ultra Spark requests, and cannot evict the lead's calls by flooding.
-  await send({ model: ultraSpark, input: [...leadHistory, ...calls('flood_call', 4097)] }, worker('fork-inherited-worker'));
+  await wrongWorker({ model: ultraSpark, input: [...leadHistory, ...calls('flood_call', 4097)] }, worker('fork-inherited-worker'));
   await refused({ model: muse, input: leadHistory }, worker('fork-inherited-worker'));
   await send({ model: muse, input: calls('flood_call') }, worker('fork-inherited-worker'));
 
@@ -693,6 +700,40 @@ test('a training-tier worker that carries the Ultra Spark lead history is refuse
   // Requests without a session or thread ID are not checked.
   await send({ model: muse, input: leadHistory }, { 'session-id': 'fork-guard' });
   await send({ model: muse, input: leadHistory }, { 'thread-id': 'fork-sessionless-worker' });
+});
+
+test('an Ultra Spark lead pins spawned workers to its matching Muse tier', async () => {
+  const lead = id => ({ 'session-id': id, 'thread-id': id });
+  const worker = (id, thread) => ({ 'session-id': id, 'thread-id': thread });
+  const contributorLead = 'policy-contributor';
+  const privateLead = 'policy-private';
+  const contributor = 'openrouter/meta/muse-spark-1.3-contributor';
+  const standard = 'openrouter/meta/muse-spark-1.3';
+
+  await send({ model: 'ultra-spark/deepseek-v4.1-flash-1017', input: 'Lead Contributor.' }, lead(contributorLead));
+  await send({ model: contributor, input: 'Contributor worker.' }, worker(contributorLead, 'policy-contributor-worker'));
+
+  const wrongContributor = await exchange(JSON.stringify({ model: standard, input: 'Wrong worker.' }),
+    worker(contributorLead, 'policy-contributor-wrong'));
+  assert.equal(wrongContributor.status, 409);
+  assert.equal(wrongContributor.body.error.code, 'subagent_model_mismatch');
+  assert.match(wrongContributor.body.error.message, /muse-spark-1\.3-contributor/);
+
+  await send({ model: 'ultra-spark-private/deepseek-v4.1-flash-1017', input: 'Lead private.' }, lead(privateLead));
+  await send({ model: standard, input: 'Private worker.' }, worker(privateLead, 'policy-private-worker'));
+  const wrongPrivate = await exchange(JSON.stringify({ model: 'deepseek/deepseek-v4.1-flash-1017', input: 'Wrong worker.' }),
+    worker(privateLead, 'policy-private-wrong'));
+  assert.equal(wrongPrivate.status, 409);
+  assert.equal(wrongPrivate.body.error.code, 'subagent_model_mismatch');
+  assert.match(wrongPrivate.body.error.message, /muse-spark-1\.3/);
+
+  const sides = JSON.parse(readFileSync(join(routerHome, 'session-sides.json'), 'utf8'));
+  assert.deepEqual(sides[contributorLead].workerModel, contributor);
+  assert.deepEqual(sides[privateLead].workerModel, standard);
+
+  // A normal Muse thread outside Ultra Spark is not pinned by this policy.
+  const direct = await send({ model: standard, input: 'Direct thread.' }, { 'session-id': 'policy-direct' });
+  assert.equal(direct.body.model, 'meta/muse-spark-1.3');
 });
 
 test('isolation records survive restarts, refresh on use, and expire after 30 idle days', async () => {

@@ -17,6 +17,7 @@ Other programs rely on the request headers and their values, the `/health` capab
 | Contract | Guarded by |
 | --- | --- |
 | Request headers and values (`X-Codex-Router-*`, `X-Codex-Routing-Policy`) and the upstream header allowlist | `tests/unified-router.test.mjs` |
+| Ultra Spark lead and spawned-worker model tiers | `tests/unified-router.test.mjs`, `tests/router-unit-coverage.test.mjs` |
 | `/health` capability keys, the served-by report, and `GET /v1/generations/<id>` | `tests/unified-router.test.mjs`, `tests/verify-health.test.mjs` |
 | Catalog entries, their rendered prompts, and each entry's `training` value | `tests/catalog.test.mjs` |
 | Installer help text and setting validation, matching the [installer settings](setup.md#installer-settings) | `tests/install.test.mjs` |

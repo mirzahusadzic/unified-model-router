@@ -1174,17 +1174,17 @@ test('sessions refuse training workers that carry the Ultra Spark lead history',
   ];
   assert.equal(sessions.sessionRefusal({ requestId: 'lead', sessionId: session, threadId: session, requestedModel: 'ultra-spark/worker', side: 'training', input: leadInput }), null);
   const forked = sessions.sessionRefusal({
-    requestId: 'worker', sessionId: session, threadId: `${session}-worker`, requestedModel: 'meta/muse-spark-1.3', side: 'training',
+    requestId: 'worker', sessionId: session, threadId: `${session}-worker`, requestedModel: 'openrouter/meta/muse-spark-1.3-contributor', side: 'training',
     input: [{ type: 'function_call', call_id: 'lead-call-1', name: 'tool_a', arguments: '{}' }],
   });
   assert.equal(forked.code, 'forked_lead_context');
   const clean = sessions.sessionRefusal({
-    requestId: 'worker2', sessionId: session, threadId: `${session}-worker`, requestedModel: 'meta/muse-spark-1.3', side: 'training',
+    requestId: 'worker2', sessionId: session, threadId: `${session}-worker`, requestedModel: 'openrouter/meta/muse-spark-1.3-contributor', side: 'training',
     input: [{ type: 'function_call', call_id: 'unrelated', name: 'tool_a', arguments: '{}' }],
   });
   assert.equal(clean, null);
   const nonTrainingWorker = sessions.sessionRefusal({
-    requestId: 'worker3', sessionId: session, threadId: `${session}-worker`, requestedModel: 'deepseek/deepseek-chat', side: null,
+    requestId: 'worker3', sessionId: session, threadId: `${session}-worker`, requestedModel: 'openrouter/meta/muse-spark-1.3-contributor', side: null,
     input: [{ type: 'function_call', call_id: 'lead-call-1', name: 'tool_a', arguments: '{}' }],
   });
   assert.equal(nonTrainingWorker, null);
@@ -1196,12 +1196,12 @@ test('sessions cap lead call IDs per session and across sessions', () => {
   const many = Array.from({ length: 4100 }, (_, index) => ({ type: 'function_call', call_id: `cap-${index}`, name: 't', arguments: '{}' }));
   assert.equal(sessions.sessionRefusal({ requestId: 'cap-lead', sessionId: session, threadId: session, requestedModel: 'ultra-spark/x', side: 'training', input: many }), null);
   const evicted = sessions.sessionRefusal({
-    requestId: 'cap-worker', sessionId: session, threadId: `${session}-w`, requestedModel: 'meta/muse-spark-1.3', side: 'training',
+    requestId: 'cap-worker', sessionId: session, threadId: `${session}-w`, requestedModel: 'openrouter/meta/muse-spark-1.3-contributor', side: 'training',
     input: [{ type: 'function_call', call_id: 'cap-0', name: 't', arguments: '{}' }],
   });
   assert.equal(evicted, null);
   const retained = sessions.sessionRefusal({
-    requestId: 'cap-worker2', sessionId: session, threadId: `${session}-w`, requestedModel: 'meta/muse-spark-1.3', side: 'training',
+    requestId: 'cap-worker2', sessionId: session, threadId: `${session}-w`, requestedModel: 'openrouter/meta/muse-spark-1.3-contributor', side: 'training',
     input: [{ type: 'function_call', call_id: 'cap-4099', name: 't', arguments: '{}' }],
   });
   assert.equal(retained.code, 'forked_lead_context');
@@ -1213,7 +1213,7 @@ test('sessions cap lead call IDs per session and across sessions', () => {
     sessions.sessionRefusal({ requestId: `fill-${index}`, sessionId: id, threadId: id, requestedModel: 'ultra-spark/x', side: 'training', input: [{ type: 'function_call', call_id: `fill-call-${index}`, name: 't', arguments: '{}' }] });
   }
   const afterEviction = sessions.sessionRefusal({
-    requestId: 'evicted-check', sessionId: firstSession, threadId: `${firstSession}-w`, requestedModel: 'meta/muse-spark-1.3', side: 'training',
+    requestId: 'evicted-check', sessionId: firstSession, threadId: `${firstSession}-w`, requestedModel: 'openrouter/meta/muse-spark-1.3-contributor', side: 'training',
     input: [{ type: 'function_call', call_id: 'first-id', name: 't', arguments: '{}' }],
   });
   assert.equal(afterEviction, null);

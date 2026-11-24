@@ -29,6 +29,12 @@ const sessionSideRefreshMs = 24 * 60 * 60 * 1000;
 // that trains, however long it sits idle.
 const lasting = entry => entry?.side === 'private';
 const current = entry => (entry && (lasting(entry) || Date.now() - entry.at < sessionSideRetentionMs) ? entry : undefined);
+const ultraSparkWorkerModels = {
+  'ultra-spark/': 'openrouter/meta/muse-spark-1.3-contributor',
+  'ultra-spark-private/': 'openrouter/meta/muse-spark-1.3',
+};
+const workerModelFor = requestedModel => Object.entries(ultraSparkWorkerModels)
+  .find(([prefix]) => requestedModel.startsWith(prefix))?.[1] ?? null;
 
 function loadSessionSides() {
   try {
@@ -90,7 +96,15 @@ export function protectedSession(sessionId) {
 function recordSessionSide(sessionId, side) {
   const cutoff = Date.now() - sessionSideRetentionMs;
   for (const [id, entry] of sessionSides) if (!lasting(entry) && entry.at <= cutoff) sessionSides.delete(id);
-  sessionSides.set(sessionId, { side, at: Date.now() });
+  sessionSides.set(sessionId, { ...sessionSides.get(sessionId), side, at: Date.now() });
+  persistJson(sessionSidesFile, Object.fromEntries(sessionSides), 'session.isolation_persist_failed');
+}
+
+function recordWorkerModel(sessionId, requestedModel, workerModel) {
+  const recorded = current(sessionSides.get(sessionId));
+  if (!recorded || (recorded.leadModel === requestedModel && recorded.workerModel === workerModel
+      && Date.now() - recorded.at < sessionSideRefreshMs)) return;
+  sessionSides.set(sessionId, { ...recorded, leadModel: requestedModel, workerModel, at: Date.now() });
   persistJson(sessionSidesFile, Object.fromEntries(sessionSides), 'session.isolation_persist_failed');
 }
 
@@ -291,17 +305,32 @@ export function sessionRefusal({ requestId, sessionId, threadId, requestedModel,
   }
   if (recorded && Date.now() - recorded.at > sessionSideRefreshMs) recordSessionSide(sessionId, recorded.side);
   if (sessionId && threadId) {
-    const ultraSpark = requestedModel.startsWith('ultra-spark/');
+    const workerModel = workerModelFor(requestedModel);
     if (threadId === sessionId) {
-      if (ultraSpark) recordLeadCallIds(sessionId, input);
-    } else if (side === 'training' && !ultraSpark) {
-      const forkedCallIds = forkedLeadCallIds(sessionId, input);
-      if (forkedCallIds > 0) {
-        logEvent('error', 'session.forked_lead_context', { requestId, sessionId, model: requestedModel, forkedCallIds });
+      if (workerModel) {
+        recordWorkerModel(sessionId, requestedModel, workerModel);
+        recordLeadCallIds(sessionId, input);
+      }
+    } else {
+      const active = current(sessionSides.get(sessionId));
+      if (active?.workerModel && requestedModel !== active.workerModel) {
+        logEvent('error', 'session.subagent_model_mismatch', {
+          requestId, sessionId, leadModel: active.leadModel, expected: active.workerModel, model: requestedModel,
+        });
         return {
-          code: 'forked_lead_context',
-          message: 'This worker request carries the Ultra Spark lead thread\'s history, and its provider trains on its inputs. Spawn workers with fork_context: false.',
+          code: 'subagent_model_mismatch',
+          message: `This Ultra Spark thread can only spawn ${active.workerModel} workers.`,
         };
+      }
+      if (side === 'training') {
+        const forkedCallIds = forkedLeadCallIds(sessionId, input);
+        if (forkedCallIds > 0) {
+          logEvent('error', 'session.forked_lead_context', { requestId, sessionId, model: requestedModel, forkedCallIds });
+          return {
+            code: 'forked_lead_context',
+            message: 'This worker request carries the Ultra Spark lead thread\'s history, and its provider trains on its inputs. Spawn workers with fork_context: false.',
+          };
+        }
       }
     }
   }

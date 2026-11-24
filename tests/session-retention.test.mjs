@@ -19,6 +19,10 @@ writeFileSync(join(home, 'session-sides.json'), JSON.stringify({
   'idle-side': { side: 'openai', at: now },
   // A non-training Ultra Spark side survives startup however old it is.
   'idle-private': { side: 'private', at: now - 400 * day },
+  'persisted-policy': {
+    side: 'training', at: now, leadModel: 'ultra-spark/deepseek-v4.1-flash-1017',
+    workerModel: 'openrouter/meta/muse-spark-1.3-contributor',
+  },
 }));
 writeFileSync(join(home, 'claude-routes.json'), JSON.stringify({ 'idle-route': { route: 'openrouter', at: now } }));
 Object.assign(process.env, {
@@ -62,7 +66,7 @@ after(() => {
   rmdirSync(home);
 });
 
-async function post(model, sessionId) {
+async function post(model, sessionId, threadId = sessionId) {
   const request = new PassThrough();
   Object.assign(request, {
     method: 'POST',
@@ -72,7 +76,7 @@ async function post(model, sessionId) {
       'content-type': 'application/json',
       'x-codex-router-token': 'a'.repeat(64),
       'session-id': sessionId,
-      'thread-id': sessionId,
+      'thread-id': threadId,
     },
   });
   const response = new PassThrough();
@@ -84,6 +88,13 @@ async function post(model, sessionId) {
   await ended;
   return response.statusCode;
 }
+
+test('a persisted Ultra Spark worker policy survives a router restart', async () => {
+  const count = forwarded.length;
+  assert.equal(await post('openrouter/meta/muse-spark-1.3', 'persisted-policy', 'persisted-worker'), 409);
+  assert.equal(forwarded.length, count);
+  assert.equal(await post('openrouter/meta/muse-spark-1.3-contributor', 'persisted-policy', 'persisted-worker'), 200);
+});
 
 test('a session side older than 30 days no longer refuses the other side', async () => {
   now += 31 * day;
