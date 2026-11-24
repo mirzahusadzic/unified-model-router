@@ -229,4 +229,4 @@ CI tests Linux, macOS, and Windows, checks script syntax, and validates the mode
 
 ---
 
-[Configuration](docs/setup.md) · [How routing works](docs/routing.md) · [Services & troubleshooting](docs/operations.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Apache-2.0](LICENSE) · [Notices](NOTICE)
+[Configuration](docs/setup.md) · [How routing works](docs/routing.md) · [Services & troubleshooting](docs/operations.md) · [Test posture](docs/test-posture.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Apache-2.0](LICENSE) · [Notices](NOTICE)
